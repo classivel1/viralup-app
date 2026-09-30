@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import JSZip from "jszip";
 import {
   BadgeCheck, Clapperboard, Copy, Download, ExternalLink, Film, Home as HomeIcon, Image as ImageIcon,
-  Library, Link as LinkIcon, Package, Play, Plus, Send, Settings, ShieldCheck, Smartphone,
+  ChevronRight, Library, Link as LinkIcon, Package, Play, Plus, Send, Settings, ShieldCheck, Smartphone,
   Trash2, Upload, UserCheck, Video, Zap
 } from "lucide-react";
 
@@ -585,7 +585,50 @@ export default function Home() {
         <input ref={inputRef} hidden type="file" accept="video/*" multiple onChange={onFiles}/>
       </section>
 
-      <section className="quickBlocks" aria-label="Ações principais">
+      <section className="moduleHub" aria-label="Blocos funcionais">
+        <div className="moduleHubHead">
+          <div>
+            <p className="eyebrow">CENTRAL DE TRABALHO</p>
+            <h2>Escolha o que você quer fazer</h2>
+          </div>
+          <span className="moduleHint">Cada função em seu próprio bloco</span>
+        </div>
+
+        <div className="moduleGrid">
+          <button type="button" onClick={()=>goTo("importar")} className="moduleCard">
+            <span className="moduleIcon"><Download size={19}/></span>
+            <span><strong>1. Importar</strong><small>Link ou arquivo do aparelho</small></span>
+            <ChevronRight size={17}/>
+          </button>
+          <button type="button" onClick={()=>goTo("episodios")} className="moduleCard">
+            <span className="moduleIcon"><Clapperboard size={19}/></span>
+            <span><strong>2. Episódios</strong><small>Embed e organização da série</small></span>
+            <ChevronRight size={17}/>
+          </button>
+          <button type="button" onClick={()=>goTo("automacao")} className="moduleCard">
+            <span className="moduleIcon"><Settings size={19}/></span>
+            <span><strong>3. Campanha</strong><small>Fonte, CTA e autorização</small></span>
+            <ChevronRight size={17}/>
+          </button>
+          <button type="button" onClick={()=>goTo("biblioteca")} className="moduleCard">
+            <span className="moduleIcon"><Library size={19}/></span>
+            <span><strong>4. Biblioteca</strong><small>Vídeos processados e pacotes</small></span>
+            <ChevronRight size={17}/>
+          </button>
+          <button type="button" onClick={()=>goTo("publicacao")} className="moduleCard">
+            <span className="moduleIcon"><Send size={19}/></span>
+            <span><strong>5. Publicar</strong><small>TikTok e fluxo de postagem</small></span>
+            <ChevronRight size={17}/>
+          </button>
+          <button type="button" onClick={()=>goTo("contas")} className="moduleCard">
+            <span className="moduleIcon"><UserCheck size={19}/></span>
+            <span><strong>6. Contas</strong><small>Safelist e autorizações</small></span>
+            <ChevronRight size={17}/>
+          </button>
+        </div>
+      </section>
+
+      <section className="quickBlocks" id="importar" aria-label="Ações principais">
         <article className="quickBlock primaryQuick">
           <div className="quickBlockTitle"><LinkIcon size={18}/><div><strong>Importar por link</strong><span>Link direto de vídeo autorizado</span></div></div>
           <div className="urlImportRow">
@@ -637,7 +680,7 @@ export default function Home() {
         <article><Film size={18}/><div><strong>{stats.ready}</strong><span>Prontos</span></div></article>
       </section>
 
-      <section className="section" id="contas">
+      <section className="section functionalSection" id="contas">
         <div className="sectionHeading">
           <div><p className="eyebrow">CONTAS AUTORIZADAS</p><h2>Safelist e publicação</h2></div>
           <span className="safeBadge ok"><UserCheck size={16}/> {accounts.length} conta cadastrada</span>
@@ -661,7 +704,7 @@ export default function Home() {
         </div>
       </section>
 
-      <section className="section" id="automacao">
+      <section className="section functionalSection" id="automacao">
         <div className="sectionHeading">
           <div><p className="eyebrow">MODO AUTOMÁTICO</p><h2>Padrão da campanha</h2></div>
           <span className={configured ? "safeBadge ok" : "safeBadge"}><ShieldCheck size={16}/> {configured ? "Configurado" : "Falta autorização"}</span>
@@ -713,7 +756,8 @@ export default function Home() {
           </div>
 
           {settings.source === "ReelShort / RS Boost" && (
-            <div className="remoteSourcePanel">
+            <div className="remoteSourcePanel modulePanel" id="episodios">
+              <div className="blockKicker">BLOCO 2 • EPISÓDIOS</div>
               <div>
                 <strong>Player oficial ReelShort</strong>
                 <span>O episódio fica incorporado no ViralUp sem baixar o arquivo de vídeo.</span>
@@ -816,7 +860,7 @@ export default function Home() {
         </section>
       )}
 
-      <section className="section" id="biblioteca">
+      <section className="section functionalSection" id="biblioteca">
         <div className="sectionHeading"><div><p className="eyebrow">BIBLIOTECA</p><h2>Pacotes prontos para publicar</h2></div></div>
 
         {library.length === 0 ? (
@@ -860,7 +904,7 @@ export default function Home() {
         )}
       </section>
 
-      <section className="publishNote">
+      <section className="publishNote functionalSection" id="publicacao">
         <Send size={20}/>
         <div>
           <strong>Publicação preparada para o TikTok</strong>
@@ -871,7 +915,7 @@ export default function Home() {
       <nav className="mobileNav" aria-label="Navegação principal">
         <button type="button" onClick={()=>goTo("inicio")}><HomeIcon size={20}/><span>Início</span></button>
         <button type="button" onClick={()=>goTo("biblioteca")}><Library size={20}/><span>Biblioteca</span></button>
-        <button className="navCreate" type="button" onClick={pickFiles}><Plus size={25}/></button>
+        <button className="navCreate" type="button" onClick={()=>goTo("importar")}><Plus size={25}/></button>
         <button type="button" onClick={()=>goTo("automacao")}><Settings size={20}/><span>Automação</span></button>
         <button type="button" onClick={()=>goTo("contas")}><UserCheck size={20}/><span>Contas</span></button>
       </nav>
