@@ -1,27 +1,29 @@
 # ViralUp Studio
 
-Aplicação web responsiva para preparar vídeos verticais autorizados.
+Pipeline automatizado para vídeos verticais autorizados.
 
-## Funcional na versão atual
+## Automação atual
 
-- Upload real de vídeo no navegador
-- Registro de origem, campanha e autorização de uso
-- Processamento server-side com FFmpeg
-- Saída MP4 1080x1920 em 9:16 sem esticar o conteúdo
-- Biblioteca persistente no próprio navegador usando IndexedDB
-- Visualização, download e exclusão de vídeos processados
-- Auto-deploy pelo Render conectado ao branch main
+- Seleção múltipla de vídeos
+- Fila automática em sequência
+- Perfil de campanha salvo no navegador
+- Origem, campanha e autorização reaproveitadas automaticamente
+- Processamento FFmpeg em 1080x1920
+- Preservação de proporção sem esticar
+- Marca ViralUp automática no topo
+- @ViralUp automático no rodapé
+- Biblioteca local persistente em IndexedDB
+- Download manual ou automático dos MP4 finais
+- Auto-deploy no Render a cada atualização do branch main
 
 ## Limite atual
 
-A primeira versão limita cada vídeo a 25 MB para manter o processamento estável no plano gratuito.
-
-Os arquivos processados ficam armazenados localmente no aparelho/navegador do usuário. Isso evita depender de storage externo neste MVP e mantém o conteúdo fora do repositório.
+25 MB por vídeo no MVP para manter estabilidade no plano gratuito.
 
 ## Publicação
 
-A publicação no Kwai permanece manual até existir uma integração/API oficial autorizada e disponível para a conta.
+A automação vai até "pronto para publicar". A postagem no Kwai permanece manual até existir uma API oficial autorizada e habilitada para a conta.
 
-## Segurança
+## Direitos
 
-Nunca coloque tokens, senhas ou chaves de API no GitHub.
+O sistema exige origem e referência de autorização antes de processar em modo automático. Não foi implementado scraping nem download não autorizado de plataformas.
