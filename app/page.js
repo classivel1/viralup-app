@@ -17,9 +17,13 @@ const DEFAULT_ACCOUNTS = [{ id: "reelshort-tiktok-viralup", platform: "TikTok", 
 const SOURCE_PRESETS = {
   "ReelShort / RS Boost": {
     rightsType: "Campanha promocional autorizada",
-    campaign: "ReelShort (Drama)",
+    campaign: "Apaixonada pelo Dr. Papai do Bebê!",
     authorization: "RS Boost Creator Safelist | TikTok @viralup | Status: Pending Update | Cadastro: 30/09/2026",
-    cta: "Siga a @viralup para mais episódios"
+    cta: "Siga a @viralup para mais episódios",
+    totalEpisodes: 85,
+    freeEpisodes: 7,
+    promoLink: "https://reelslink.com/cps/7vN12i",
+    episodeStrategy: "Funil de 7 episódios autorizados"
   },
   "NetShort": {
     rightsType: "Parceria / afiliado",
@@ -114,17 +118,41 @@ function slug(value) {
 function buildMetadata(file, settings, index) {
   const raw = titleize(baseName(file.name));
   const campaign = titleize(settings.campaign || "");
-  const title = campaign ? `${campaign} • ${raw}` : raw;
-  const hook = index % 3 === 0
-    ? "Você precisa ver isso até o fim."
-    : index % 3 === 1
-      ? "O final muda tudo."
-      : "Esse momento merece atenção.";
-  const cta = settings.cta?.trim() || "Siga a ViralUp";
-  const hashtags = ["#ViralUp", "#Kwai", "#VideoVertical", "#SerieCurta", "#Entretenimento"];
-  const caption = `${hook} ${title}. ${cta}. ${hashtags.join(" ")}`;
-  const filename = `${slug(title)}-viralup`;
-  return { title, caption, hashtags, filename };
+  const episodeNumber = index + 1;
+  const isReelShort = settings.source === "ReelShort / RS Boost";
+  const isLastFreeEpisode = isReelShort && Number(settings.freeEpisodes) > 0 && episodeNumber === Number(settings.freeEpisodes);
+  const title = campaign ? `${campaign} • Episódio ${episodeNumber} • ${raw}` : `Episódio ${episodeNumber} • ${raw}`;
+
+  const hooks = [
+    "Você precisa ver isso até o fim.",
+    "O final muda tudo.",
+    "Esse momento merece atenção.",
+    "A decisão dela muda tudo.",
+    "Você faria o mesmo nessa situação?",
+    "Espere até ver o que acontece depois."
+  ];
+  const hook = hooks[index % hooks.length];
+
+  const standardCta = settings.cta?.trim() || "Siga a @viralup para mais episódios";
+  const finalCta = settings.promoLink?.trim()
+    ? "Quer continuar a história? Assista aos próximos episódios pelo link da bio."
+    : "Quer continuar a história? Procure o link oficial da campanha na bio.";
+  const cta = isLastFreeEpisode ? finalCta : standardCta;
+
+  const hashtags = ["#ViralUp", "#MiniDrama", "#SerieCurta", "#TikTokSeries", "#Entretenimento"];
+  const caption = `${hook} Episódio ${episodeNumber}: ${campaign || raw}. ${cta} ${hashtags.join(" ")}`;
+  const filename = `${slug(campaign || raw)}-ep-${String(episodeNumber).padStart(2,"0")}-viralup`;
+
+  return {
+    title,
+    caption,
+    hashtags,
+    filename,
+    episodeNumber,
+    isLastFreeEpisode,
+    promoLink: settings.promoLink || "",
+    funnelStage: isLastFreeEpisode ? "redirect" : "retention"
+  };
 }
 
 async function makeCover(videoBlob, title) {
@@ -349,7 +377,16 @@ export default function Home() {
           rightsType: settings.rightsType,
           campaign: settings.campaign.trim(),
           authorization: settings.authorization.trim(),
-          cta: settings.cta.trim(),
+          cta: meta.isLastFreeEpisode
+            ? "Quer continuar a história? Assista aos próximos episódios pelo link da bio."
+            : settings.cta.trim(),
+          totalEpisodes: Number(settings.totalEpisodes) || null,
+          freeEpisodes: Number(settings.freeEpisodes) || null,
+          promoLink: settings.promoLink?.trim() || "",
+          episodeStrategy: settings.episodeStrategy || "",
+          episodeNumber: meta.episodeNumber,
+          funnelStage: meta.funnelStage,
+          isLastFreeEpisode: meta.isLastFreeEpisode,
           originalName: file.name,
           size: blob.size,
           createdAt: Date.now(),
@@ -394,7 +431,14 @@ export default function Home() {
       rightsType: item.rightsType,
       campaign: item.campaign,
       authorization: item.authorization,
-      cta: item.cta
+      cta: item.cta,
+      totalEpisodes: item.totalEpisodes,
+      freeEpisodes: item.freeEpisodes,
+      episodeNumber: item.episodeNumber,
+      promoLink: item.promoLink,
+      episodeStrategy: item.episodeStrategy,
+      funnelStage: item.funnelStage,
+      isLastFreeEpisode: item.isLastFreeEpisode
     }, null, 2));
     const out = await zip.generateAsync({ type: "blob", compression: "DEFLATE" });
     downloadBlob(out, `${item.filename}-pacote.zip`);
@@ -502,7 +546,18 @@ export default function Home() {
               </label>
             )}
             <label><span>Campanha</span><input value={settings.campaign} onChange={(e)=>setSettings({...settings,campaign:e.target.value})} placeholder="Nome ou código"/></label>
-            <label><span>CTA padrão</span><input value={settings.cta} onChange={(e)=>setSettings({...settings,cta:e.target.value})} placeholder="Siga a ViralUp"/></label>
+            <label><span>CTA padrão</span><input value={settings.cta} onChange={(e)=>setSettings({...settings,cta:e.target.value})} placeholder="Siga a @viralup para mais episódios"/></label>
+            {settings.source === "ReelShort / RS Boost" && (
+              <>
+                <label><span>Total de episódios</span><input type="number" min="1" value={settings.totalEpisodes ?? ""} onChange={(e)=>setSettings({...settings,totalEpisodes:e.target.value})}/></label>
+                <label><span>Episódios liberados</span><input type="number" min="1" value={settings.freeEpisodes ?? ""} onChange={(e)=>setSettings({...settings,freeEpisodes:e.target.value})}/></label>
+                <label className="wide"><span>Link promocional oficial</span><input value={settings.promoLink ?? ""} onChange={(e)=>setSettings({...settings,promoLink:e.target.value})} placeholder="https://..."/></label>
+                <div className="wide funnelCard">
+                  <strong>Funil automático</strong>
+                  <span>Episódios 1 a {settings.freeEpisodes || 0}: CTA para seguir @viralup. Episódio {settings.freeEpisodes || 0}: CTA muda automaticamente para continuar pelo link da bio.</span>
+                </div>
+              </>
+            )}
             <label className="wide"><span>Autorização de uso</span><input value={settings.authorization} onChange={(e)=>setSettings({...settings,authorization:e.target.value})} placeholder="Link, código, e-mail ou observação da autorização"/></label>
           </div>
 
@@ -551,6 +606,7 @@ export default function Home() {
                   <div className="readyLine"><BadgeCheck size={15}/> PACOTE PRONTO</div>
                   <h3>{item.title}</h3>
                   <p className="captionPreview">{item.caption}</p>
+                  {item.isLastFreeEpisode && <span className="redirectBadge">ÚLTIMO GRATUITO • REDIRECIONAR</span>}
                   <small>{mb(item.size)} • 1080×1920 • MP4 + capa + legenda</small>
                 </div>
                 <div className="itemActions">
