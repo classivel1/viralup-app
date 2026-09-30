@@ -26,6 +26,7 @@ Pipeline automatizado para vídeos verticais autorizados.
 - Pacote ZIP com MP4 + capa JPG + legenda TXT + dados JSON
 - Biblioteca local persistente em IndexedDB
 - Opção de baixar o pacote automaticamente
+- Fluxo de publicação no TikTok: copiar legenda, baixar vídeo e abrir página de upload
 - Auto-deploy no Render a cada atualização do branch main
 
 ## Limite atual
@@ -34,7 +35,7 @@ Pipeline automatizado para vídeos verticais autorizados.
 
 ## Publicação
 
-A automação vai até "pacote pronto para publicar". A postagem no Kwai permanece manual até existir uma API oficial autorizada e habilitada para a conta.
+A automação vai até "pacote pronto para publicar". A postagem no TikTok permanece manual até existir uma integração oficial de publicação autorizada e habilitada para a conta.
 
 ## Direitos
 
