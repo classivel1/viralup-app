@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import JSZip from "jszip";
 import {
-  BadgeCheck, Clapperboard, Copy, Download, Film, Home, Image as ImageIcon,
+  BadgeCheck, Clapperboard, Copy, Download, Film, Home as HomeIcon, Image as ImageIcon,
   Library, Package, Play, Plus, Send, Settings, ShieldCheck, Smartphone,
   Trash2, Upload, Video, Zap
 } from "lucide-react";
@@ -464,7 +464,7 @@ export default function Home() {
       </section>
 
       <nav className="mobileNav" aria-label="Navegação principal">
-        <button type="button" onClick={()=>goTo("inicio")}><Home size={20}/><span>Início</span></button>
+        <button type="button" onClick={()=>goTo("inicio")}><HomeIcon size={20}/><span>Início</span></button>
         <button type="button" onClick={()=>goTo("biblioteca")}><Library size={20}/><span>Biblioteca</span></button>
         <button className="navCreate" type="button" onClick={pickFiles}><Plus size={25}/></button>
         <button type="button" onClick={()=>goTo("automacao")}><Settings size={20}/><span>Automação</span></button>
