@@ -12,6 +12,15 @@ const DB_NAME = "viralup-studio";
 const STORE = "videos";
 const SETTINGS_KEY = "viralup-auto-settings";
 const ACCOUNTS_KEY = "viralup-authorized-accounts";
+const OFFICIAL_EMBEDS = {
+  "ReelShort / RS Boost": [
+    {
+      episode: 1,
+      title: "Episódio 1",
+      src: "https://www.reelshort.com/pt/embed/6aad002ad47530b9bc0fa1d1-0keqwyvo48?show_controls=true&cps_id=18416&code=4994030"
+    }
+  ]
+};
 const DEFAULT_ACCOUNTS = [{ id: "reelshort-tiktok-viralup", platform: "TikTok", account: "@viralup", source: "ReelShort / RS Boost", status: "Pending Update", note: "Cadastro enviado ao Creator Safelist", updatedAt: "2026-09-30" }];
 
 const SOURCE_PRESETS = {
@@ -585,6 +594,32 @@ export default function Home() {
 
           {settings.source === "ReelShort / RS Boost" && (
             <div className="remoteSourcePanel">
+              <div>
+                <strong>Player oficial ReelShort</strong>
+                <span>O episódio fica incorporado no ViralUp sem baixar o arquivo de vídeo.</span>
+              </div>
+              <div className="embedGrid">
+                {(OFFICIAL_EMBEDS[settings.source] || []).map((embed)=>(
+                  <article className="embedCard" key={embed.episode}>
+                    <div className="embedTitle">
+                      <strong>{embed.title}</strong>
+                      <span>OFICIAL</span>
+                    </div>
+                    <div className="embedFrame">
+                      <iframe
+                        id={`reelshort_player_${embed.episode}`}
+                        src={embed.src}
+                        title={`ReelShort video player - Episódio ${embed.episode}`}
+                        frameBorder="0"
+                        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                        referrerPolicy="strict-origin-when-cross-origin"
+                        allowFullScreen
+                      />
+                    </div>
+                  </article>
+                ))}
+              </div>
+
               <div>
                 <strong>Episódios oficiais da campanha</strong>
                 <span>Sem baixar e sem copiar mídia: abra diretamente os episódios liberados no RS Boost.</span>
