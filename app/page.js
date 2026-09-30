@@ -12,6 +12,7 @@ const DB_NAME = "viralup-studio";
 const STORE = "videos";
 const SETTINGS_KEY = "viralup-auto-settings";
 const ACCOUNTS_KEY = "viralup-authorized-accounts";
+const EMBEDS_KEY = "viralup-official-embeds";
 const OFFICIAL_EMBEDS = {
   "ReelShort / RS Boost": [
     {
@@ -255,6 +256,9 @@ export default function Home() {
   const [status, setStatus] = useState("");
   const [installPrompt, setInstallPrompt] = useState(null);
   const [accounts, setAccounts] = useState(DEFAULT_ACCOUNTS);
+  const [embeds, setEmbeds] = useState(OFFICIAL_EMBEDS["ReelShort / RS Boost"] || []);
+  const [embedEpisode, setEmbedEpisode] = useState(2);
+  const [embedCode, setEmbedCode] = useState("");
   const [settings, setSettings] = useState({
     source: "ReelShort / RS Boost",
     sourceCustom: "",
@@ -281,6 +285,10 @@ export default function Home() {
       const savedAccounts = JSON.parse(localStorage.getItem(ACCOUNTS_KEY) || "null");
       if (savedAccounts?.length) setAccounts(savedAccounts);
       else localStorage.setItem(ACCOUNTS_KEY, JSON.stringify(DEFAULT_ACCOUNTS));
+
+      const savedEmbeds = JSON.parse(localStorage.getItem(EMBEDS_KEY) || "null");
+      if (savedEmbeds?.length) setEmbeds(savedEmbeds);
+      else localStorage.setItem(EMBEDS_KEY, JSON.stringify(OFFICIAL_EMBEDS["ReelShort / RS Boost"] || []));
     } catch {}
 
     if ("serviceWorker" in navigator) {
@@ -329,6 +337,40 @@ export default function Home() {
 
   function pickFiles() {
     inputRef.current?.click();
+  }
+
+  function saveEmbed() {
+    const raw = embedCode.trim();
+    if (!raw) return setStatus("Cole o código Embed do episódio.");
+
+    const match = raw.match(/src=["']([^"']+)["']/i);
+    if (!match?.[1]) return setStatus("Não encontrei o endereço do player dentro desse código Embed.");
+
+    const src = match[1].replace(/\s+/g, "");
+    if (!/^https:\/\/(www\.)?reelshort\.com\//i.test(src)) {
+      return setStatus("Esse Embed não parece ser um player oficial do ReelShort.");
+    }
+
+    const episode = Number(embedEpisode);
+    if (!episode || episode < 1) return setStatus("Informe um número de episódio válido.");
+
+    const next = [
+      ...embeds.filter((item) => item.episode !== episode),
+      { episode, title: `Episódio ${episode}`, src }
+    ].sort((a,b)=>a.episode-b.episode);
+
+    setEmbeds(next);
+    localStorage.setItem(EMBEDS_KEY, JSON.stringify(next));
+    setEmbedCode("");
+    setEmbedEpisode(episode + 1);
+    setStatus(`Episódio ${episode} salvo no player oficial.`);
+  }
+
+  function removeEmbed(episode) {
+    const next = embeds.filter((item)=>item.episode !== episode);
+    setEmbeds(next);
+    localStorage.setItem(EMBEDS_KEY, JSON.stringify(next));
+    setStatus(`Episódio ${episode} removido do player.`);
   }
 
   async function installApp() {
@@ -598,12 +640,41 @@ export default function Home() {
                 <strong>Player oficial ReelShort</strong>
                 <span>O episódio fica incorporado no ViralUp sem baixar o arquivo de vídeo.</span>
               </div>
+              <div className="embedManager">
+                <div className="embedManagerHead">
+                  <div>
+                    <strong>Adicionar episódio por Embed</strong>
+                    <span>Copie o Embed no RS Boost e cole abaixo. O ViralUp extrai o player automaticamente.</span>
+                  </div>
+                </div>
+                <div className="embedManagerForm">
+                  <label>
+                    <span>Episódio</span>
+                    <input type="number" min="1" value={embedEpisode} onChange={(e)=>setEmbedEpisode(e.target.value)} />
+                  </label>
+                  <label className="embedCodeField">
+                    <span>Código Embed</span>
+                    <textarea
+                      value={embedCode}
+                      onChange={(e)=>setEmbedCode(e.target.value)}
+                      placeholder={'<iframe ... src="https://www.reelshort.com/..." ...></iframe>'}
+                    />
+                  </label>
+                  <button className="primaryButton" type="button" onClick={saveEmbed}>
+                    <Plus size={18}/> Adicionar episódio
+                  </button>
+                </div>
+              </div>
+
               <div className="embedGrid">
-                {(OFFICIAL_EMBEDS[settings.source] || []).map((embed)=>(
+                {embeds.map((embed)=>(
                   <article className="embedCard" key={embed.episode}>
                     <div className="embedTitle">
                       <strong>{embed.title}</strong>
-                      <span>OFICIAL</span>
+                      <div className="embedTitleActions">
+                        <span>OFICIAL</span>
+                        <button type="button" onClick={()=>removeEmbed(embed.episode)} title="Remover episódio"><Trash2 size={14}/></button>
+                      </div>
                     </div>
                     <div className="embedFrame">
                       <iframe
