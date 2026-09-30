@@ -33,3 +33,6 @@
   .mobileNav button:hover,.mobileNav button:focus{color:#fff}
   .mobileNav .navCreate{align-self:center;width:54px;height:54px;min-height:54px;margin-top:-24px;border-radius:18px;color:#fff;background:linear-gradient(145deg,#ff8b1c,#ff3d22);box-shadow:0 12px 28px rgba(255,74,27,.32)}
 }
+
+.accountsGrid{display:grid;grid-template-columns:repeat(2,1fr);gap:12px}.accountCard{display:flex;gap:14px;padding:17px;border:1px solid var(--line);border-radius:17px;background:#101115}.accountIcon{display:grid;place-items:center;flex:0 0 46px;height:46px;border:1px solid #254c32;border-radius:13px;color:#78df99;background:#102117}.accountInfo{min-width:0;flex:1}.accountTopline{display:flex;align-items:center;justify-content:space-between;gap:10px}.accountInfo p{margin:7px 0 0;color:var(--muted);font-size:12px;line-height:1.4}.accountInfo b{color:#d9dce2}.accountInfo small{display:block;margin-top:8px;color:#666b74}.pendingBadge{flex:0 0 auto;padding:5px 8px;border:1px solid #6b5222;border-radius:999px;color:#f3c763;background:#241b0e;font-size:10px;font-weight:900}.mobileNav{grid-template-columns:1fr 1fr 62px 1fr 1fr}
+@media(max-width:760px){.accountsGrid{grid-template-columns:1fr}.accountCard{border-radius:18px}.accountTopline{align-items:flex-start;flex-direction:column}}
