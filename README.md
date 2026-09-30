@@ -9,6 +9,8 @@ Pipeline automatizado para vídeos verticais autorizados.
 - Perfil de campanha salvo no navegador
 - Múltiplas fontes autorizadas: ReelShort / RS Boost, NetShort, Upload próprio e Outro parceiro
 - Registro do tipo de autorização por fonte
+- Controle de contas autorizadas / Creator Safelist
+- TikTok @viralup registrado para ReelShort / RS Boost com status Pending Update
 - Origem, campanha e autorização reaproveitadas automaticamente
 - Processamento FFmpeg em 1080x1920
 - Marca ViralUp e @ViralUp automáticos
