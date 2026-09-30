@@ -7,6 +7,8 @@ Pipeline automatizado para vídeos verticais autorizados.
 - Seleção múltipla de vídeos
 - Fila automática em sequência
 - Perfil de campanha salvo no navegador
+- Múltiplas fontes autorizadas: ReelShort / RS Boost, NetShort, Upload próprio e Outro parceiro
+- Registro do tipo de autorização por fonte
 - Origem, campanha e autorização reaproveitadas automaticamente
 - Processamento FFmpeg em 1080x1920
 - Marca ViralUp e @ViralUp automáticos
