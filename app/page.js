@@ -200,6 +200,17 @@ export default function Home() {
       const saved = JSON.parse(localStorage.getItem(SETTINGS_KEY) || "null");
       if (saved) setSettings((s) => ({ ...s, ...saved }));
     } catch {}
+
+    if ("serviceWorker" in navigator) {
+      navigator.serviceWorker.register("/sw.js").catch(() => {});
+    }
+
+    const onInstall = (event) => {
+      event.preventDefault();
+      setInstallPrompt(event);
+    };
+    window.addEventListener("beforeinstallprompt", onInstall);
+    return () => window.removeEventListener("beforeinstallprompt", onInstall);
   }, []);
 
   const stats = useMemo(() => ({
@@ -218,6 +229,20 @@ export default function Home() {
 
   function pickFiles() {
     inputRef.current?.click();
+  }
+
+  async function installApp() {
+    if (!installPrompt) {
+      setStatus("No Android/Chrome, abra o menu do navegador e escolha “Adicionar à tela inicial” ou “Instalar app”.");
+      return;
+    }
+    await installPrompt.prompt();
+    await installPrompt.userChoice.catch(() => null);
+    setInstallPrompt(null);
+  }
+
+  function goTo(id) {
+    document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
   }
 
   async function onFiles(event) {
@@ -324,17 +349,20 @@ export default function Home() {
 
   return (
     <main className="shell">
-      <header className="topbar">
+      <header className="topbar appTopbar">
         <div className="brand">
           <span className="brandIcon"><Play size={18} fill="currentColor"/></span>
           <span>Viral<span className="up">Up</span></span>
         </div>
-        <span className="studioTag">AUTO STUDIO</span>
+        <button className="installButton" type="button" onClick={installApp}>
+          <Smartphone size={16}/> Instalar
+        </button>
       </header>
 
-      <section className="hero">
+      <section className="hero appHero" id="inicio">
+        <div className="appStatus"><span className="statusDot"/> AUTO STUDIO ATIVO</div>
         <p className="eyebrow">AUTOMAÇÃO DE VÍDEO VERTICAL</p>
-        <h1>Selecione os vídeos. O ViralUp monta o pacote completo.</h1>
+        <h1>Seu estúdio ViralUp no celular.</h1>
         <p className="heroText">
           O sistema processa em 9:16, cria título, legenda, hashtags, nome de arquivo,
           capa 9:16 e um pacote ZIP pronto para postagem.
@@ -433,6 +461,14 @@ export default function Home() {
           <span>Cada ZIP inclui MP4 processado, capa 9:16, legenda com hashtags e dados da campanha. A postagem no Kwai continua manual até existir uma API oficial habilitada para sua conta.</span>
         </div>
       </section>
+
+      <nav className="mobileNav" aria-label="Navegação principal">
+        <button type="button" onClick={()=>goTo("inicio")}><Home size={20}/><span>Início</span></button>
+        <button type="button" onClick={()=>goTo("biblioteca")}><Library size={20}/><span>Biblioteca</span></button>
+        <button className="navCreate" type="button" onClick={pickFiles}><Plus size={25}/></button>
+        <button type="button" onClick={()=>goTo("automacao")}><Settings size={20}/><span>Automação</span></button>
+        <button type="button" onClick={installApp}><Smartphone size={20}/><span>Instalar</span></button>
+      </nav>
 
       <footer><span>ViralUp Studio</span><span>Conteúdo autorizado primeiro.</span></footer>
     </main>
