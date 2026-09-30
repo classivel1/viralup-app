@@ -1,0 +1,18 @@
+{
+  "name": "ViralUp Studio",
+  "short_name": "ViralUp",
+  "description": "Estúdio móvel para automação de vídeos verticais autorizados",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#08090b",
+  "theme_color": "#08090b",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
