@@ -184,8 +184,11 @@ export default function Home() {
   const [busy, setBusy] = useState(false);
   const [current, setCurrent] = useState("");
   const [status, setStatus] = useState("");
+  const [installPrompt, setInstallPrompt] = useState(null);
   const [settings, setSettings] = useState({
-    source: "",
+    source: "ReelShort / RS Boost",
+    sourceCustom: "",
+    rightsType: "Campanha promocional autorizada",
     campaign: "",
     authorization: "",
     cta: "Siga a ViralUp",
@@ -220,7 +223,10 @@ export default function Home() {
     ready: library.filter((x) => x.status === "ready").length
   }), [library, busy]);
 
-  const configured = Boolean(settings.source.trim() && settings.authorization.trim());
+  const resolvedSource = settings.source === "Outro parceiro"
+    ? settings.sourceCustom.trim()
+    : settings.source.trim();
+  const configured = Boolean(resolvedSource && settings.authorization.trim());
 
   function saveSettings(next = settings) {
     setSettings(next);
@@ -285,7 +291,9 @@ export default function Home() {
         const item = {
           id: crypto.randomUUID(),
           ...meta,
-          source: settings.source.trim(),
+          source: resolvedSource,
+          sourceType: settings.source,
+          rightsType: settings.rightsType,
           campaign: settings.campaign.trim(),
           authorization: settings.authorization.trim(),
           cta: settings.cta.trim(),
@@ -329,6 +337,8 @@ export default function Home() {
       caption: item.caption,
       hashtags: item.hashtags,
       source: item.source,
+      sourceType: item.sourceType,
+      rightsType: item.rightsType,
       campaign: item.campaign,
       authorization: item.authorization,
       cta: item.cta
@@ -389,10 +399,34 @@ export default function Home() {
 
         <div className="importPanel">
           <div className="formGrid">
-            <label><span>Origem / programa</span><input value={settings.source} onChange={(e)=>setSettings({...settings,source:e.target.value})} placeholder="Ex.: material oficial autorizado"/></label>
+            <label>
+              <span>Fonte de conteúdo</span>
+              <select value={settings.source} onChange={(e)=>setSettings({...settings,source:e.target.value})}>
+                <option>ReelShort / RS Boost</option>
+                <option>NetShort</option>
+                <option>Upload próprio</option>
+                <option>Outro parceiro</option>
+              </select>
+            </label>
+            <label>
+              <span>Tipo de autorização</span>
+              <select value={settings.rightsType} onChange={(e)=>setSettings({...settings,rightsType:e.target.value})}>
+                <option>Campanha promocional autorizada</option>
+                <option>Licença de uso</option>
+                <option>Conteúdo próprio</option>
+                <option>Parceria / afiliado</option>
+                <option>Outro</option>
+              </select>
+            </label>
+            {settings.source === "Outro parceiro" && (
+              <label className="wide">
+                <span>Nome do parceiro</span>
+                <input value={settings.sourceCustom} onChange={(e)=>setSettings({...settings,sourceCustom:e.target.value})} placeholder="Ex.: plataforma ou estúdio parceiro"/>
+              </label>
+            )}
             <label><span>Campanha</span><input value={settings.campaign} onChange={(e)=>setSettings({...settings,campaign:e.target.value})} placeholder="Nome ou código"/></label>
-            <label className="wide"><span>Autorização de uso</span><input value={settings.authorization} onChange={(e)=>setSettings({...settings,authorization:e.target.value})} placeholder="Link, código ou observação da autorização"/></label>
-            <label className="wide"><span>CTA padrão</span><input value={settings.cta} onChange={(e)=>setSettings({...settings,cta:e.target.value})} placeholder="Siga a ViralUp"/></label>
+            <label><span>CTA padrão</span><input value={settings.cta} onChange={(e)=>setSettings({...settings,cta:e.target.value})} placeholder="Siga a ViralUp"/></label>
+            <label className="wide"><span>Autorização de uso</span><input value={settings.authorization} onChange={(e)=>setSettings({...settings,authorization:e.target.value})} placeholder="Link, código, e-mail ou observação da autorização"/></label>
           </div>
 
           <div className="toggles">
