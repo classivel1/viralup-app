@@ -14,6 +14,33 @@ const SETTINGS_KEY = "viralup-auto-settings";
 const ACCOUNTS_KEY = "viralup-authorized-accounts";
 const DEFAULT_ACCOUNTS = [{ id: "reelshort-tiktok-viralup", platform: "TikTok", account: "@viralup", source: "ReelShort / RS Boost", status: "Pending Update", note: "Cadastro enviado ao Creator Safelist", updatedAt: "2026-09-30" }];
 
+const SOURCE_PRESETS = {
+  "ReelShort / RS Boost": {
+    rightsType: "Campanha promocional autorizada",
+    campaign: "ReelShort (Drama)",
+    authorization: "RS Boost Creator Safelist | TikTok @viralup | Status: Pending Update | Cadastro: 30/09/2026",
+    cta: "Siga a @viralup para mais episódios"
+  },
+  "NetShort": {
+    rightsType: "Parceria / afiliado",
+    campaign: "",
+    authorization: "",
+    cta: "Siga a @viralup para mais episódios"
+  },
+  "Upload próprio": {
+    rightsType: "Conteúdo próprio",
+    campaign: "ViralUp Original",
+    authorization: "Conteúdo próprio da ViralUp",
+    cta: "Siga a @viralup para mais vídeos"
+  },
+  "Outro parceiro": {
+    rightsType: "Outro",
+    campaign: "",
+    authorization: "",
+    cta: "Siga a @viralup para mais vídeos"
+  }
+};
+
 function openDb() {
   return new Promise((resolve, reject) => {
     const request = indexedDB.open(DB_NAME, 1);
@@ -191,10 +218,7 @@ export default function Home() {
   const [settings, setSettings] = useState({
     source: "ReelShort / RS Boost",
     sourceCustom: "",
-    rightsType: "Campanha promocional autorizada",
-    campaign: "",
-    authorization: "",
-    cta: "Siga a ViralUp",
+    ...SOURCE_PRESETS["ReelShort / RS Boost"],
     autoMode: true,
     autoDownload: false
   });
@@ -205,7 +229,15 @@ export default function Home() {
     refresh().catch(() => setStatus("Não foi possível abrir a biblioteca deste aparelho."));
     try {
       const saved = JSON.parse(localStorage.getItem(SETTINGS_KEY) || "null");
-      if (saved) setSettings((s) => ({ ...s, ...saved }));
+      if (saved) {
+        const source = saved.source || "ReelShort / RS Boost";
+        const preset = SOURCE_PRESETS[source] || {};
+        const hydrated = { ...preset, ...saved };
+        if (source === "ReelShort / RS Boost" && !hydrated.authorization) {
+          Object.assign(hydrated, SOURCE_PRESETS["ReelShort / RS Boost"]);
+        }
+        setSettings((s) => ({ ...s, ...hydrated }));
+      }
       const savedAccounts = JSON.parse(localStorage.getItem(ACCOUNTS_KEY) || "null");
       if (savedAccounts?.length) setAccounts(savedAccounts);
       else localStorage.setItem(ACCOUNTS_KEY, JSON.stringify(DEFAULT_ACCOUNTS));
@@ -238,6 +270,21 @@ export default function Home() {
     setSettings(next);
     localStorage.setItem(SETTINGS_KEY, JSON.stringify(next));
     setStatus("Padrão automático salvo neste aparelho.");
+  }
+
+  function applySourcePreset(source) {
+    const preset = SOURCE_PRESETS[source] || SOURCE_PRESETS["Outro parceiro"];
+    const next = {
+      ...settings,
+      source,
+      sourceCustom: source === "Outro parceiro" ? settings.sourceCustom : "",
+      ...preset
+    };
+    setSettings(next);
+    localStorage.setItem(SETTINGS_KEY, JSON.stringify(next));
+    setStatus(source === "ReelShort / RS Boost"
+      ? "Fonte ReelShort configurada automaticamente com a Safelist do TikTok @viralup."
+      : `Fonte ${source} configurada. Complete a autorização quando necessário.`);
   }
 
   function pickFiles() {
@@ -431,7 +478,7 @@ export default function Home() {
           <div className="formGrid">
             <label>
               <span>Fonte de conteúdo</span>
-              <select value={settings.source} onChange={(e)=>setSettings({...settings,source:e.target.value})}>
+              <select value={settings.source} onChange={(e)=>applySourcePreset(e.target.value)}>
                 <option>ReelShort / RS Boost</option>
                 <option>NetShort</option>
                 <option>Upload próprio</option>
