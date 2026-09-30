@@ -9,11 +9,15 @@ Pipeline automatizado para vídeos verticais autorizados.
 - Perfil de campanha salvo no navegador
 - Origem, campanha e autorização reaproveitadas automaticamente
 - Processamento FFmpeg em 1080x1920
-- Preservação de proporção sem esticar
-- Marca ViralUp automática no topo
-- @ViralUp automático no rodapé
+- Marca ViralUp e @ViralUp automáticos
+- Título automático
+- Legenda automática
+- Hashtags automáticas
+- Nome de arquivo padronizado
+- Capa 9:16 gerada automaticamente a partir do vídeo
+- Pacote ZIP com MP4 + capa JPG + legenda TXT + dados JSON
 - Biblioteca local persistente em IndexedDB
-- Download manual ou automático dos MP4 finais
+- Opção de baixar o pacote automaticamente
 - Auto-deploy no Render a cada atualização do branch main
 
 ## Limite atual
@@ -22,7 +26,7 @@ Pipeline automatizado para vídeos verticais autorizados.
 
 ## Publicação
 
-A automação vai até "pronto para publicar". A postagem no Kwai permanece manual até existir uma API oficial autorizada e habilitada para a conta.
+A automação vai até "pacote pronto para publicar". A postagem no Kwai permanece manual até existir uma API oficial autorizada e habilitada para a conta.
 
 ## Direitos
 
