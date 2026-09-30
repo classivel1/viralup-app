@@ -2,20 +2,13 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  BadgeCheck,
-  Clapperboard,
-  Download,
-  Film,
-  Play,
-  Send,
-  ShieldCheck,
-  Trash2,
-  Upload,
-  Video
+  BadgeCheck, Clapperboard, Download, Film, Play, Send,
+  Settings, ShieldCheck, Trash2, Upload, Video, Zap
 } from "lucide-react";
 
 const DB_NAME = "viralup-studio";
 const STORE = "videos";
+const SETTINGS_KEY = "viralup-auto-settings";
 
 function openDb() {
   return new Promise((resolve, reject) => {
@@ -30,59 +23,69 @@ function openDb() {
   });
 }
 
-async function getAllVideos() {
+async function dbAction(mode, action) {
   const db = await openDb();
   return new Promise((resolve, reject) => {
-    const tx = db.transaction(STORE, "readonly");
-    const req = tx.objectStore(STORE).getAll();
-    req.onsuccess = () => resolve(req.result.sort((a, b) => b.createdAt - a.createdAt));
+    const tx = db.transaction(STORE, mode);
+    action(tx.objectStore(STORE), resolve, reject);
+    tx.onerror = () => reject(tx.error);
+  });
+}
+
+async function getAllVideos() {
+  return dbAction("readonly", (store, resolve, reject) => {
+    const req = store.getAll();
+    req.onsuccess = () => resolve(req.result.sort((a,b)=>b.createdAt-a.createdAt));
     req.onerror = () => reject(req.error);
   });
 }
 
 async function saveVideo(item) {
-  const db = await openDb();
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(STORE, "readwrite");
-    tx.objectStore(STORE).put(item);
-    tx.oncomplete = resolve;
-    tx.onerror = () => reject(tx.error);
+  return dbAction("readwrite", (store, resolve) => {
+    store.put(item);
+    resolve();
   });
 }
 
 async function deleteVideo(id) {
-  const db = await openDb();
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(STORE, "readwrite");
-    tx.objectStore(STORE).delete(id);
-    tx.oncomplete = resolve;
-    tx.onerror = () => reject(tx.error);
+  return dbAction("readwrite", (store, resolve) => {
+    store.delete(id);
+    resolve();
   });
 }
 
-function bytes(size) {
-  if (!size) return "0 MB";
+function mb(size) {
   return `${(size / 1024 / 1024).toFixed(1)} MB`;
 }
 
+function baseName(name) {
+  return name.replace(/\.[^.]+$/, "");
+}
+
 export default function Home() {
-  const fileInput = useRef(null);
+  const inputRef = useRef(null);
   const [library, setLibrary] = useState([]);
-  const [selected, setSelected] = useState(null);
-  const [form, setForm] = useState({
-    title: "",
+  const [queue, setQueue] = useState([]);
+  const [busy, setBusy] = useState(false);
+  const [current, setCurrent] = useState("");
+  const [status, setStatus] = useState("");
+  const [settings, setSettings] = useState({
     source: "",
     campaign: "",
     authorization: "",
-    cta: "Siga a ViralUp"
+    cta: "Siga a ViralUp",
+    autoMode: true,
+    autoDownload: false
   });
-  const [busy, setBusy] = useState(false);
-  const [status, setStatus] = useState("");
 
   const refresh = async () => setLibrary(await getAllVideos());
 
   useEffect(() => {
     refresh().catch(() => setStatus("Não foi possível abrir a biblioteca deste aparelho."));
+    try {
+      const saved = JSON.parse(localStorage.getItem(SETTINGS_KEY) || "null");
+      if (saved) setSettings((s) => ({ ...s, ...saved }));
+    } catch {}
   }, []);
 
   const stats = useMemo(() => ({
@@ -91,124 +94,132 @@ export default function Home() {
     ready: library.filter((x) => x.status === "ready").length
   }), [library, busy]);
 
-  function chooseFile() {
-    fileInput.current?.click();
+  const configured = Boolean(settings.source.trim() && settings.authorization.trim());
+
+  function saveSettings(next = settings) {
+    setSettings(next);
+    localStorage.setItem(SETTINGS_KEY, JSON.stringify(next));
+    setStatus("Padrão automático salvo neste aparelho.");
   }
 
-  async function onFileChange(event) {
-    const file = event.target.files?.[0];
-    if (!file) return;
-    if (!file.type.startsWith("video/")) {
-      setStatus("Escolha um arquivo de vídeo.");
-      return;
-    }
-    if (file.size > 25 * 1024 * 1024) {
-      setStatus("Nesta primeira versão, o limite é 25 MB por vídeo.");
-      return;
-    }
-    setSelected(file);
-    setForm((current) => ({
-      ...current,
-      title: current.title || file.name.replace(/\.[^.]+$/, "")
-    }));
-    setStatus("Vídeo selecionado. Preencha a autorização e processe.");
+  function pickFiles() {
+    inputRef.current?.click();
   }
 
-  async function processVideo(event) {
-    event.preventDefault();
-    if (!selected) return setStatus("Selecione um vídeo primeiro.");
-    if (!form.source.trim() || !form.authorization.trim()) {
-      return setStatus("Informe a origem e a autorização de uso.");
+  async function onFiles(event) {
+    const list = Array.from(event.target.files || []);
+    const valid = list.filter((file) => file.type.startsWith("video/") && file.size <= 25 * 1024 * 1024);
+    const rejected = list.length - valid.length;
+    setQueue(valid);
+    if (rejected) setStatus(`${rejected} arquivo(s) ignorado(s): formato inválido ou acima de 25 MB.`);
+    else setStatus(`${valid.length} vídeo(s) adicionados à fila.`);
+
+    if (valid.length && settings.autoMode && configured) {
+      await runBatch(valid);
     }
+  }
+
+  function triggerDownload(blob, title) {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${title || "viralup"}.mp4`;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1200);
+  }
+
+  async function runBatch(files = queue) {
+    if (!files.length) return setStatus("Adicione um ou mais vídeos.");
+    if (!configured) return setStatus("Preencha origem e autorização de uso antes de automatizar.");
 
     setBusy(true);
-    setStatus("Processando vídeo em 9:16...");
-    try {
-      const data = new FormData();
-      data.append("video", selected);
-      data.append("cta", form.cta);
+    let done = 0;
 
-      const response = await fetch("/api/process", { method: "POST", body: data });
-      if (!response.ok) {
-        const error = await response.json().catch(() => ({}));
-        throw new Error(error.error || "Falha no processamento");
+    for (const file of files) {
+      const title = baseName(file.name);
+      setCurrent(file.name);
+      setStatus(`Processando ${done + 1} de ${files.length}: ${file.name}`);
+
+      try {
+        const data = new FormData();
+        data.append("video", file);
+        data.append("cta", settings.cta || "Siga a ViralUp");
+
+        const response = await fetch("/api/process", { method: "POST", body: data });
+        if (!response.ok) {
+          const error = await response.json().catch(() => ({}));
+          throw new Error(error.error || "Falha no processamento");
+        }
+
+        const blob = await response.blob();
+        const item = {
+          id: crypto.randomUUID(),
+          title,
+          source: settings.source.trim(),
+          campaign: settings.campaign.trim(),
+          authorization: settings.authorization.trim(),
+          cta: settings.cta.trim(),
+          originalName: file.name,
+          size: blob.size,
+          createdAt: Date.now(),
+          status: "ready",
+          blob
+        };
+
+        await saveVideo(item);
+        if (settings.autoDownload) triggerDownload(blob, title);
+        done++;
+      } catch (error) {
+        setStatus(`Erro em ${file.name}: ${error.message}`);
       }
-      const processedBlob = await response.blob();
-      const item = {
-        id: crypto.randomUUID(),
-        title: form.title.trim() || selected.name,
-        source: form.source.trim(),
-        campaign: form.campaign.trim(),
-        authorization: form.authorization.trim(),
-        cta: form.cta.trim(),
-        originalName: selected.name,
-        size: processedBlob.size,
-        createdAt: Date.now(),
-        status: "ready",
-        blob: processedBlob
-      };
-      await saveVideo(item);
-      await refresh();
-      setSelected(null);
-      setForm({ title: "", source: "", campaign: "", authorization: "", cta: "Siga a ViralUp" });
-      if (fileInput.current) fileInput.current.value = "";
-      setStatus("Vídeo processado e salvo na biblioteca deste aparelho.");
-    } catch (error) {
-      setStatus(error.message || "Erro ao processar o vídeo.");
-    } finally {
-      setBusy(false);
     }
+
+    await refresh();
+    setQueue([]);
+    setCurrent("");
+    setBusy(false);
+    if (inputRef.current) inputRef.current.value = "";
+    setStatus(`${done} de ${files.length} vídeo(s) processado(s). Prontos para publicar.`);
   }
 
-  function playItem(item) {
+  function openVideo(item) {
     const url = URL.createObjectURL(item.blob);
     window.open(url, "_blank");
     setTimeout(() => URL.revokeObjectURL(url), 60000);
   }
 
-  function downloadItem(item) {
-    const url = URL.createObjectURL(item.blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `${item.title || "viralup"}.mp4`;
-    a.click();
-    setTimeout(() => URL.revokeObjectURL(url), 1000);
-  }
-
   async function removeItem(item) {
     await deleteVideo(item.id);
     await refresh();
-    setStatus("Vídeo removido da biblioteca.");
+    setStatus("Vídeo removido.");
   }
 
   return (
     <main className="shell">
       <header className="topbar">
         <div className="brand">
-          <span className="brandIcon"><Play size={18} fill="currentColor" /></span>
+          <span className="brandIcon"><Play size={18} fill="currentColor"/></span>
           <span>Viral<span className="up">Up</span></span>
         </div>
-        <span className="studioTag">STUDIO</span>
+        <span className="studioTag">AUTO STUDIO</span>
       </header>
 
       <section className="hero">
-        <div>
-          <p className="eyebrow">PIPELINE DE CONTEÚDO VERTICAL</p>
-          <h1>Importe, autorize, processe e publique.</h1>
-          <p className="heroText">
-            O ViralUp Studio agora recebe vídeos autorizados, registra campanha e direitos,
-            converte para 9:16 e mantém uma biblioteca local pronta para publicação.
-          </p>
-          <div className="actions">
-            <button className="primaryButton" type="button" onClick={chooseFile}>
-              <Upload size={19} /> Importar vídeo autorizado
-            </button>
-            <button className="ghostButton" type="button" onClick={() => document.getElementById("biblioteca")?.scrollIntoView({behavior:"smooth"})}>
-              <Video size={19} /> Ver biblioteca
-            </button>
-          </div>
-          <input ref={fileInput} hidden type="file" accept="video/*" onChange={onFileChange} />
+        <p className="eyebrow">AUTOMAÇÃO DE VÍDEO VERTICAL</p>
+        <h1>Selecione os vídeos. O ViralUp faz o resto.</h1>
+        <p className="heroText">
+          Salve uma vez a origem e a autorização. Depois envie vários vídeos de uma vez:
+          o sistema processa em sequência, aplica 9:16, identidade ViralUp e deixa tudo pronto.
+        </p>
+        <div className="actions">
+          <button className="primaryButton" onClick={pickFiles} disabled={busy}>
+            <Upload size={19}/> Selecionar vídeos
+          </button>
+          <button className="ghostButton" onClick={() => document.getElementById("automacao")?.scrollIntoView({behavior:"smooth"})}>
+            <Settings size={19}/> Configurar automação
+          </button>
         </div>
+        <input ref={inputRef} hidden type="file" accept="video/*" multiple onChange={onFiles}/>
       </section>
 
       <section className="metrics">
@@ -217,55 +228,60 @@ export default function Home() {
         <article><Film size={18}/><div><strong>{stats.ready}</strong><span>Prontos</span></div></article>
       </section>
 
-      <section className="section">
+      <section className="section" id="automacao">
         <div className="sectionHeading">
           <div>
-            <p className="eyebrow">NOVA IMPORTAÇÃO</p>
-            <h2>Dados de uso e processamento</h2>
+            <p className="eyebrow">MODO AUTOMÁTICO</p>
+            <h2>Padrão da campanha</h2>
           </div>
-          <span className="safeBadge"><ShieldCheck size={16}/> Direitos primeiro</span>
+          <span className={configured ? "safeBadge ok" : "safeBadge"}>
+            <ShieldCheck size={16}/> {configured ? "Configurado" : "Falta autorização"}
+          </span>
         </div>
 
-        <form className="importPanel" onSubmit={processVideo}>
-          <div className="fileCard">
-            <span className="libraryIcon"><Video /></span>
-            <div>
-              <strong>{selected ? selected.name : "Nenhum vídeo selecionado"}</strong>
-              <span>{selected ? bytes(selected.size) : "MP4, MOV, WebM • até 25 MB"}</span>
-            </div>
-            <button type="button" className="miniButton" onClick={chooseFile}>Escolher</button>
-          </div>
-
+        <div className="importPanel">
           <div className="formGrid">
-            <label>
-              <span>Título</span>
-              <input value={form.title} onChange={(e)=>setForm({...form,title:e.target.value})} placeholder="Ex.: Episódio 01" />
+            <label><span>Origem / programa</span><input value={settings.source} onChange={(e)=>setSettings({...settings,source:e.target.value})} placeholder="Ex.: material oficial autorizado"/></label>
+            <label><span>Campanha</span><input value={settings.campaign} onChange={(e)=>setSettings({...settings,campaign:e.target.value})} placeholder="Nome ou código"/></label>
+            <label className="wide"><span>Autorização de uso</span><input value={settings.authorization} onChange={(e)=>setSettings({...settings,authorization:e.target.value})} placeholder="Link, código ou observação da autorização"/></label>
+            <label className="wide"><span>CTA padrão</span><input value={settings.cta} onChange={(e)=>setSettings({...settings,cta:e.target.value})} placeholder="Siga a ViralUp"/></label>
+          </div>
+
+          <div className="toggles">
+            <label className="toggleRow">
+              <input type="checkbox" checked={settings.autoMode} onChange={(e)=>setSettings({...settings,autoMode:e.target.checked})}/>
+              <span><strong>Processar automaticamente</strong><small>Ao selecionar vídeos, iniciar a fila sem outro clique.</small></span>
             </label>
-            <label>
-              <span>Origem / programa</span>
-              <input value={form.source} onChange={(e)=>setForm({...form,source:e.target.value})} placeholder="Ex.: campanha oficial" required />
-            </label>
-            <label>
-              <span>Campanha</span>
-              <input value={form.campaign} onChange={(e)=>setForm({...form,campaign:e.target.value})} placeholder="Nome ou código da campanha" />
-            </label>
-            <label>
-              <span>Autorização de uso</span>
-              <input value={form.authorization} onChange={(e)=>setForm({...form,authorization:e.target.value})} placeholder="Link, código ou observação" required />
-            </label>
-            <label className="wide">
-              <span>CTA</span>
-              <input value={form.cta} onChange={(e)=>setForm({...form,cta:e.target.value})} placeholder="Siga a ViralUp" />
+            <label className="toggleRow">
+              <input type="checkbox" checked={settings.autoDownload} onChange={(e)=>setSettings({...settings,autoDownload:e.target.checked})}/>
+              <span><strong>Baixar automaticamente</strong><small>Baixar cada MP4 final assim que terminar.</small></span>
             </label>
           </div>
 
-          <button className="primaryButton processButton" disabled={busy} type="submit">
-            <Clapperboard size={19}/>
-            {busy ? "Processando..." : "Processar em 9:16"}
-          </button>
+          <div className="panelActions">
+            <button className="ghostButton" type="button" onClick={() => saveSettings()}>
+              <Settings size={18}/> Salvar padrão
+            </button>
+            <button className="primaryButton" type="button" onClick={pickFiles} disabled={busy || !configured}>
+              <Zap size={18}/> Adicionar e automatizar
+            </button>
+          </div>
           {status && <p className="statusMessage">{status}</p>}
-        </form>
+          {busy && <div className="progressLine"><span className="pulse"/><strong>Processando:</strong> {current}</div>}
+        </div>
       </section>
+
+      {queue.length > 0 && !busy && (
+        <section className="section">
+          <div className="queueBox">
+            <div>
+              <strong>{queue.length} vídeo(s) na fila</strong>
+              <span>{queue.map((f)=>f.name).join(" • ")}</span>
+            </div>
+            <button className="primaryButton" onClick={()=>runBatch()}><Clapperboard size={18}/> Processar fila</button>
+          </div>
+        </section>
+      )}
 
       <section className="section" id="biblioteca">
         <div className="sectionHeading">
@@ -277,27 +293,23 @@ export default function Home() {
 
         {library.length === 0 ? (
           <div className="emptyLibrary">
-            <Video size={34}/>
-            <strong>Nenhum vídeo processado ainda</strong>
-            <span>Importe um vídeo autorizado para começar.</span>
+            <Video size={34}/><strong>Nenhum vídeo pronto ainda</strong><span>Configure o modo automático e selecione seus vídeos.</span>
           </div>
         ) : (
           <div className="videoGrid">
-            {library.map((item) => (
+            {library.map((item)=>(
               <article className="videoItem" key={item.id}>
-                <div className="videoThumb" onClick={() => playItem(item)}>
-                  <Play size={27} fill="currentColor"/>
-                </div>
+                <div className="videoThumb" onClick={()=>openVideo(item)}><Play size={27} fill="currentColor"/></div>
                 <div className="videoMeta">
                   <div className="readyLine"><BadgeCheck size={15}/> PRONTO</div>
                   <h3>{item.title}</h3>
                   <p>{item.source}{item.campaign ? ` • ${item.campaign}` : ""}</p>
-                  <small>{bytes(item.size)} • 1080×1920</small>
+                  <small>{mb(item.size)} • 1080×1920 • ViralUp</small>
                 </div>
                 <div className="itemActions">
-                  <button onClick={() => playItem(item)} title="Visualizar"><Play size={17}/></button>
-                  <button onClick={() => downloadItem(item)} title="Baixar"><Download size={17}/></button>
-                  <button onClick={() => removeItem(item)} title="Excluir"><Trash2 size={17}/></button>
+                  <button onClick={()=>openVideo(item)} title="Visualizar"><Play size={17}/></button>
+                  <button onClick={()=>triggerDownload(item.blob,item.title)} title="Baixar"><Download size={17}/></button>
+                  <button onClick={()=>removeItem(item)} title="Excluir"><Trash2 size={17}/></button>
                 </div>
               </article>
             ))}
@@ -308,15 +320,12 @@ export default function Home() {
       <section className="publishNote">
         <Send size={20}/>
         <div>
-          <strong>Publicação no Kwai</strong>
-          <span>O arquivo final fica pronto para baixar e publicar manualmente enquanto não houver API oficial habilitada para sua conta.</span>
+          <strong>Automatizado até o ponto seguro de publicação</strong>
+          <span>Importação, fila, 9:16, marca ViralUp, metadados, biblioteca e download estão automatizados. A postagem no Kwai continua manual até existir uma API oficial habilitada para a conta.</span>
         </div>
       </section>
 
-      <footer>
-        <span>ViralUp Studio</span>
-        <span>Conteúdo autorizado primeiro.</span>
-      </footer>
+      <footer><span>ViralUp Studio</span><span>Conteúdo autorizado primeiro.</span></footer>
     </main>
   );
 }
