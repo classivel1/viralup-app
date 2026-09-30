@@ -22,7 +22,9 @@ const SOURCE_PRESETS = {
     cta: "Siga a @viralup para mais episódios",
     totalEpisodes: 85,
     freeEpisodes: 7,
-    promoLink: "https://reelslink.com/cps/7vN12i",
+    promoLink: "https://reelslink.com/cps/hlj7F0",
+    appPromoLink: "https://reelslink.com/cps/7VN12i",
+    contentReferralCode: "4993960",
     episodeStrategy: "Funil de 7 episódios autorizados"
   },
   "NetShort": {
@@ -383,6 +385,8 @@ export default function Home() {
           totalEpisodes: Number(settings.totalEpisodes) || null,
           freeEpisodes: Number(settings.freeEpisodes) || null,
           promoLink: settings.promoLink?.trim() || "",
+          appPromoLink: settings.appPromoLink?.trim() || "",
+          contentReferralCode: settings.contentReferralCode?.trim() || "",
           episodeStrategy: settings.episodeStrategy || "",
           episodeNumber: meta.episodeNumber,
           funnelStage: meta.funnelStage,
@@ -436,6 +440,8 @@ export default function Home() {
       freeEpisodes: item.freeEpisodes,
       episodeNumber: item.episodeNumber,
       promoLink: item.promoLink,
+      appPromoLink: item.appPromoLink,
+      contentReferralCode: item.contentReferralCode,
       episodeStrategy: item.episodeStrategy,
       funnelStage: item.funnelStage,
       isLastFreeEpisode: item.isLastFreeEpisode
@@ -551,7 +557,9 @@ export default function Home() {
               <>
                 <label><span>Total de episódios</span><input type="number" min="1" value={settings.totalEpisodes ?? ""} onChange={(e)=>setSettings({...settings,totalEpisodes:e.target.value})}/></label>
                 <label><span>Episódios liberados</span><input type="number" min="1" value={settings.freeEpisodes ?? ""} onChange={(e)=>setSettings({...settings,freeEpisodes:e.target.value})}/></label>
-                <label className="wide"><span>Link promocional oficial</span><input value={settings.promoLink ?? ""} onChange={(e)=>setSettings({...settings,promoLink:e.target.value})} placeholder="https://..."/></label>
+                <label className="wide"><span>Link promocional do conteúdo</span><input value={settings.promoLink ?? ""} onChange={(e)=>setSettings({...settings,promoLink:e.target.value})} placeholder="https://..."/></label>
+                <label className="wide"><span>Link promocional do aplicativo</span><input value={settings.appPromoLink ?? ""} onChange={(e)=>setSettings({...settings,appPromoLink:e.target.value})} placeholder="https://..."/></label>
+                <label className="wide"><span>Código de indicação do conteúdo</span><input value={settings.contentReferralCode ?? ""} onChange={(e)=>setSettings({...settings,contentReferralCode:e.target.value})} placeholder="Código"/></label>
                 <div className="wide funnelCard">
                   <strong>Funil automático</strong>
                   <span>Episódios 1 a {settings.freeEpisodes || 0}: CTA para seguir @viralup. Episódio {settings.freeEpisodes || 0}: CTA muda automaticamente para continuar pelo link da bio.</span>
