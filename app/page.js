@@ -5,12 +5,14 @@ import JSZip from "jszip";
 import {
   BadgeCheck, Clapperboard, Copy, Download, Film, Home as HomeIcon, Image as ImageIcon,
   Library, Package, Play, Plus, Send, Settings, ShieldCheck, Smartphone,
-  Trash2, Upload, Video, Zap
+  Trash2, Upload, UserCheck, Video, Zap
 } from "lucide-react";
 
 const DB_NAME = "viralup-studio";
 const STORE = "videos";
 const SETTINGS_KEY = "viralup-auto-settings";
+const ACCOUNTS_KEY = "viralup-authorized-accounts";
+const DEFAULT_ACCOUNTS = [{ id: "reelshort-tiktok-viralup", platform: "TikTok", account: "@viralup", source: "ReelShort / RS Boost", status: "Pending Update", note: "Cadastro enviado ao Creator Safelist", updatedAt: "2026-09-30" }];
 
 function openDb() {
   return new Promise((resolve, reject) => {
@@ -185,6 +187,7 @@ export default function Home() {
   const [current, setCurrent] = useState("");
   const [status, setStatus] = useState("");
   const [installPrompt, setInstallPrompt] = useState(null);
+  const [accounts, setAccounts] = useState(DEFAULT_ACCOUNTS);
   const [settings, setSettings] = useState({
     source: "ReelShort / RS Boost",
     sourceCustom: "",
@@ -203,6 +206,9 @@ export default function Home() {
     try {
       const saved = JSON.parse(localStorage.getItem(SETTINGS_KEY) || "null");
       if (saved) setSettings((s) => ({ ...s, ...saved }));
+      const savedAccounts = JSON.parse(localStorage.getItem(ACCOUNTS_KEY) || "null");
+      if (savedAccounts?.length) setAccounts(savedAccounts);
+      else localStorage.setItem(ACCOUNTS_KEY, JSON.stringify(DEFAULT_ACCOUNTS));
     } catch {}
 
     if ("serviceWorker" in navigator) {
@@ -391,6 +397,30 @@ export default function Home() {
         <article><Film size={18}/><div><strong>{stats.ready}</strong><span>Prontos</span></div></article>
       </section>
 
+      <section className="section" id="contas">
+        <div className="sectionHeading">
+          <div><p className="eyebrow">CONTAS AUTORIZADAS</p><h2>Safelist e publicação</h2></div>
+          <span className="safeBadge ok"><UserCheck size={16}/> {accounts.length} conta cadastrada</span>
+        </div>
+
+        <div className="accountsGrid">
+          {accounts.map((account)=>(
+            <article className="accountCard" key={account.id}>
+              <div className="accountIcon"><UserCheck size={22}/></div>
+              <div className="accountInfo">
+                <div className="accountTopline">
+                  <strong>{account.platform} {account.account}</strong>
+                  <span className="pendingBadge">{account.status}</span>
+                </div>
+                <p><b>Fonte:</b> {account.source}</p>
+                <p><b>Situação:</b> {account.note}</p>
+                <small>Atualizado em {account.updatedAt}</small>
+              </div>
+            </article>
+          ))}
+        </div>
+      </section>
+
       <section className="section" id="automacao">
         <div className="sectionHeading">
           <div><p className="eyebrow">MODO AUTOMÁTICO</p><h2>Padrão da campanha</h2></div>
@@ -502,7 +532,7 @@ export default function Home() {
         <button type="button" onClick={()=>goTo("biblioteca")}><Library size={20}/><span>Biblioteca</span></button>
         <button className="navCreate" type="button" onClick={pickFiles}><Plus size={25}/></button>
         <button type="button" onClick={()=>goTo("automacao")}><Settings size={20}/><span>Automação</span></button>
-        <button type="button" onClick={installApp}><Smartphone size={20}/><span>Instalar</span></button>
+        <button type="button" onClick={()=>goTo("contas")}><UserCheck size={20}/><span>Contas</span></button>
       </nav>
 
       <footer><span>ViralUp Studio</span><span>Conteúdo autorizado primeiro.</span></footer>
