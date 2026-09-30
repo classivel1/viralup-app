@@ -12,6 +12,10 @@ Pipeline automatizado para vídeos verticais autorizados.
 - Controle de contas autorizadas / Creator Safelist
 - TikTok @viralup registrado para ReelShort / RS Boost com status Pending Update
 - Origem, campanha e autorização reaproveitadas automaticamente
+- Funil ReelShort com episódios gratuitos configuráveis
+- CTA de retenção nos episódios iniciais
+- CTA automático de redirecionamento no último episódio gratuito
+- Link promocional oficial incluído nos metadados do pacote
 - Processamento FFmpeg em 1080x1920
 - Marca ViralUp e @ViralUp automáticos
 - Título automático
