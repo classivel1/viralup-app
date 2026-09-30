@@ -3,8 +3,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import JSZip from "jszip";
 import {
-  BadgeCheck, Clapperboard, Copy, Download, Film, Image as ImageIcon,
-  Package, Play, Send, Settings, ShieldCheck, Trash2, Upload, Video, Zap
+  BadgeCheck, Clapperboard, Copy, Download, Film, Home, Image as ImageIcon,
+  Library, Package, Play, Plus, Send, Settings, ShieldCheck, Smartphone,
+  Trash2, Upload, Video, Zap
 } from "lucide-react";
 
 const DB_NAME = "viralup-studio";
