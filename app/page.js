@@ -1,9 +1,10 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import JSZip from "jszip";
 import {
-  BadgeCheck, Clapperboard, Download, Film, Play, Send,
-  Settings, ShieldCheck, Trash2, Upload, Video, Zap
+  BadgeCheck, Clapperboard, Copy, Download, Film, Image as ImageIcon,
+  Package, Play, Send, Settings, ShieldCheck, Trash2, Upload, Video, Zap
 } from "lucide-react";
 
 const DB_NAME = "viralup-studio";
@@ -62,6 +63,119 @@ function baseName(name) {
   return name.replace(/\.[^.]+$/, "");
 }
 
+function titleize(value) {
+  return value
+    .replace(/[_-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/\b\w/g, (m) => m.toUpperCase());
+}
+
+function slug(value) {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/(^-|-$)/g, "")
+    .slice(0, 70) || "viralup-video";
+}
+
+function buildMetadata(file, settings, index) {
+  const raw = titleize(baseName(file.name));
+  const campaign = titleize(settings.campaign || "");
+  const title = campaign ? `${campaign} • ${raw}` : raw;
+  const hook = index % 3 === 0
+    ? "Você precisa ver isso até o fim."
+    : index % 3 === 1
+      ? "O final muda tudo."
+      : "Esse momento merece atenção.";
+  const cta = settings.cta?.trim() || "Siga a ViralUp";
+  const hashtags = ["#ViralUp", "#Kwai", "#VideoVertical", "#SerieCurta", "#Entretenimento"];
+  const caption = `${hook} ${title}. ${cta}. ${hashtags.join(" ")}`;
+  const filename = `${slug(title)}-viralup`;
+  return { title, caption, hashtags, filename };
+}
+
+async function makeCover(videoBlob, title) {
+  const url = URL.createObjectURL(videoBlob);
+  try {
+    const video = document.createElement("video");
+    video.src = url;
+    video.muted = true;
+    video.playsInline = true;
+
+    await new Promise((resolve, reject) => {
+      video.onloadedmetadata = resolve;
+      video.onerror = reject;
+    });
+
+    const seekTo = Math.min(Math.max(video.duration * 0.18, 0.5), Math.max(video.duration - 0.2, 0.5));
+    video.currentTime = seekTo;
+    await new Promise((resolve) => {
+      video.onseeked = resolve;
+      setTimeout(resolve, 1200);
+    });
+
+    const canvas = document.createElement("canvas");
+    canvas.width = 1080;
+    canvas.height = 1920;
+    const ctx = canvas.getContext("2d");
+    ctx.fillStyle = "#08090b";
+    ctx.fillRect(0, 0, 1080, 1920);
+
+    const vw = video.videoWidth || 1080;
+    const vh = video.videoHeight || 1920;
+    const scale = Math.min(1080 / vw, 1920 / vh);
+    const dw = vw * scale;
+    const dh = vh * scale;
+    ctx.drawImage(video, (1080-dw)/2, (1920-dh)/2, dw, dh);
+
+    const grad = ctx.createLinearGradient(0, 1250, 0, 1920);
+    grad.addColorStop(0, "rgba(0,0,0,0)");
+    grad.addColorStop(1, "rgba(0,0,0,.88)");
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 1180, 1080, 740);
+
+    ctx.fillStyle = "#ff6422";
+    ctx.font = "900 58px Arial";
+    ctx.fillText("ViralUp", 64, 120);
+
+    ctx.fillStyle = "#fff";
+    ctx.font = "900 72px Arial";
+    const words = title.split(" ");
+    const lines = [];
+    let line = "";
+    for (const word of words) {
+      const test = line ? `${line} ${word}` : word;
+      if (ctx.measureText(test).width > 900 && line) {
+        lines.push(line);
+        line = word;
+      } else line = test;
+      if (lines.length === 2) break;
+    }
+    if (line && lines.length < 3) lines.push(line);
+    lines.slice(0,3).forEach((text, i)=>ctx.fillText(text, 64, 1540 + i*88));
+
+    ctx.fillStyle = "#ff6a22";
+    ctx.font = "700 36px Arial";
+    ctx.fillText("@ViralUp", 64, 1845);
+
+    return await new Promise((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.9));
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+
+function downloadBlob(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.click();
+  setTimeout(()=>URL.revokeObjectURL(url), 1500);
+}
+
 export default function Home() {
   const inputRef = useRef(null);
   const [library, setLibrary] = useState([]);
@@ -114,18 +228,7 @@ export default function Home() {
     if (rejected) setStatus(`${rejected} arquivo(s) ignorado(s): formato inválido ou acima de 25 MB.`);
     else setStatus(`${valid.length} vídeo(s) adicionados à fila.`);
 
-    if (valid.length && settings.autoMode && configured) {
-      await runBatch(valid);
-    }
-  }
-
-  function triggerDownload(blob, title) {
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `${title || "viralup"}.mp4`;
-    a.click();
-    setTimeout(() => URL.revokeObjectURL(url), 1200);
+    if (valid.length && settings.autoMode && configured) await runBatch(valid);
   }
 
   async function runBatch(files = queue) {
@@ -135,10 +238,10 @@ export default function Home() {
     setBusy(true);
     let done = 0;
 
-    for (const file of files) {
-      const title = baseName(file.name);
+    for (const [index, file] of files.entries()) {
+      const meta = buildMetadata(file, settings, index);
       setCurrent(file.name);
-      setStatus(`Processando ${done + 1} de ${files.length}: ${file.name}`);
+      setStatus(`Processando ${index + 1} de ${files.length}: ${file.name}`);
 
       try {
         const data = new FormData();
@@ -152,9 +255,10 @@ export default function Home() {
         }
 
         const blob = await response.blob();
+        const cover = await makeCover(blob, meta.title);
         const item = {
           id: crypto.randomUUID(),
-          title,
+          ...meta,
           source: settings.source.trim(),
           campaign: settings.campaign.trim(),
           authorization: settings.authorization.trim(),
@@ -163,11 +267,12 @@ export default function Home() {
           size: blob.size,
           createdAt: Date.now(),
           status: "ready",
-          blob
+          blob,
+          cover
         };
 
         await saveVideo(item);
-        if (settings.autoDownload) triggerDownload(blob, title);
+        if (settings.autoDownload) await downloadPackage(item);
         done++;
       } catch (error) {
         setStatus(`Erro em ${file.name}: ${error.message}`);
@@ -179,13 +284,36 @@ export default function Home() {
     setCurrent("");
     setBusy(false);
     if (inputRef.current) inputRef.current.value = "";
-    setStatus(`${done} de ${files.length} vídeo(s) processado(s). Prontos para publicar.`);
+    setStatus(`${done} de ${files.length} vídeo(s) prontos com vídeo, capa, legenda e hashtags.`);
   }
 
   function openVideo(item) {
     const url = URL.createObjectURL(item.blob);
     window.open(url, "_blank");
     setTimeout(() => URL.revokeObjectURL(url), 60000);
+  }
+
+  async function downloadPackage(item) {
+    const zip = new JSZip();
+    zip.file(`${item.filename}.mp4`, item.blob);
+    if (item.cover) zip.file(`${item.filename}-capa.jpg`, item.cover);
+    zip.file("legenda.txt", item.caption || "");
+    zip.file("dados.json", JSON.stringify({
+      title: item.title,
+      caption: item.caption,
+      hashtags: item.hashtags,
+      source: item.source,
+      campaign: item.campaign,
+      authorization: item.authorization,
+      cta: item.cta
+    }, null, 2));
+    const out = await zip.generateAsync({ type: "blob", compression: "DEFLATE" });
+    downloadBlob(out, `${item.filename}-pacote.zip`);
+  }
+
+  async function copyCaption(item) {
+    await navigator.clipboard.writeText(item.caption || "");
+    setStatus("Legenda e hashtags copiadas.");
   }
 
   async function removeItem(item) {
@@ -206,18 +334,14 @@ export default function Home() {
 
       <section className="hero">
         <p className="eyebrow">AUTOMAÇÃO DE VÍDEO VERTICAL</p>
-        <h1>Selecione os vídeos. O ViralUp faz o resto.</h1>
+        <h1>Selecione os vídeos. O ViralUp monta o pacote completo.</h1>
         <p className="heroText">
-          Salve uma vez a origem e a autorização. Depois envie vários vídeos de uma vez:
-          o sistema processa em sequência, aplica 9:16, identidade ViralUp e deixa tudo pronto.
+          O sistema processa em 9:16, cria título, legenda, hashtags, nome de arquivo,
+          capa 9:16 e um pacote ZIP pronto para postagem.
         </p>
         <div className="actions">
-          <button className="primaryButton" onClick={pickFiles} disabled={busy}>
-            <Upload size={19}/> Selecionar vídeos
-          </button>
-          <button className="ghostButton" onClick={() => document.getElementById("automacao")?.scrollIntoView({behavior:"smooth"})}>
-            <Settings size={19}/> Configurar automação
-          </button>
+          <button className="primaryButton" onClick={pickFiles} disabled={busy}><Upload size={19}/> Selecionar vídeos</button>
+          <button className="ghostButton" onClick={() => document.getElementById("automacao")?.scrollIntoView({behavior:"smooth"})}><Settings size={19}/> Configurar automação</button>
         </div>
         <input ref={inputRef} hidden type="file" accept="video/*" multiple onChange={onFiles}/>
       </section>
@@ -230,13 +354,8 @@ export default function Home() {
 
       <section className="section" id="automacao">
         <div className="sectionHeading">
-          <div>
-            <p className="eyebrow">MODO AUTOMÁTICO</p>
-            <h2>Padrão da campanha</h2>
-          </div>
-          <span className={configured ? "safeBadge ok" : "safeBadge"}>
-            <ShieldCheck size={16}/> {configured ? "Configurado" : "Falta autorização"}
-          </span>
+          <div><p className="eyebrow">MODO AUTOMÁTICO</p><h2>Padrão da campanha</h2></div>
+          <span className={configured ? "safeBadge ok" : "safeBadge"}><ShieldCheck size={16}/> {configured ? "Configurado" : "Falta autorização"}</span>
         </div>
 
         <div className="importPanel">
@@ -254,17 +373,13 @@ export default function Home() {
             </label>
             <label className="toggleRow">
               <input type="checkbox" checked={settings.autoDownload} onChange={(e)=>setSettings({...settings,autoDownload:e.target.checked})}/>
-              <span><strong>Baixar automaticamente</strong><small>Baixar cada MP4 final assim que terminar.</small></span>
+              <span><strong>Baixar pacote automaticamente</strong><small>Baixa ZIP com vídeo, capa, legenda e dados.</small></span>
             </label>
           </div>
 
           <div className="panelActions">
-            <button className="ghostButton" type="button" onClick={() => saveSettings()}>
-              <Settings size={18}/> Salvar padrão
-            </button>
-            <button className="primaryButton" type="button" onClick={pickFiles} disabled={busy || !configured}>
-              <Zap size={18}/> Adicionar e automatizar
-            </button>
+            <button className="ghostButton" type="button" onClick={() => saveSettings()}><Settings size={18}/> Salvar padrão</button>
+            <button className="primaryButton" type="button" onClick={pickFiles} disabled={busy || !configured}><Zap size={18}/> Adicionar e automatizar</button>
           </div>
           {status && <p className="statusMessage">{status}</p>}
           {busy && <div className="progressLine"><span className="pulse"/><strong>Processando:</strong> {current}</div>}
@@ -274,41 +389,35 @@ export default function Home() {
       {queue.length > 0 && !busy && (
         <section className="section">
           <div className="queueBox">
-            <div>
-              <strong>{queue.length} vídeo(s) na fila</strong>
-              <span>{queue.map((f)=>f.name).join(" • ")}</span>
-            </div>
+            <div><strong>{queue.length} vídeo(s) na fila</strong><span>{queue.map((f)=>f.name).join(" • ")}</span></div>
             <button className="primaryButton" onClick={()=>runBatch()}><Clapperboard size={18}/> Processar fila</button>
           </div>
         </section>
       )}
 
       <section className="section" id="biblioteca">
-        <div className="sectionHeading">
-          <div>
-            <p className="eyebrow">BIBLIOTECA</p>
-            <h2>Prontos para publicar</h2>
-          </div>
-        </div>
+        <div className="sectionHeading"><div><p className="eyebrow">BIBLIOTECA</p><h2>Pacotes prontos para publicar</h2></div></div>
 
         {library.length === 0 ? (
-          <div className="emptyLibrary">
-            <Video size={34}/><strong>Nenhum vídeo pronto ainda</strong><span>Configure o modo automático e selecione seus vídeos.</span>
-          </div>
+          <div className="emptyLibrary"><Video size={34}/><strong>Nenhum pacote pronto ainda</strong><span>Configure o modo automático e selecione seus vídeos.</span></div>
         ) : (
           <div className="videoGrid">
             {library.map((item)=>(
-              <article className="videoItem" key={item.id}>
-                <div className="videoThumb" onClick={()=>openVideo(item)}><Play size={27} fill="currentColor"/></div>
+              <article className="videoItem rich" key={item.id}>
+                <div className="coverThumb" onClick={()=>openVideo(item)}>
+                  {item.cover ? <img src={URL.createObjectURL(item.cover)} alt="" /> : <Play size={27} fill="currentColor"/>}
+                </div>
                 <div className="videoMeta">
-                  <div className="readyLine"><BadgeCheck size={15}/> PRONTO</div>
+                  <div className="readyLine"><BadgeCheck size={15}/> PACOTE PRONTO</div>
                   <h3>{item.title}</h3>
-                  <p>{item.source}{item.campaign ? ` • ${item.campaign}` : ""}</p>
-                  <small>{mb(item.size)} • 1080×1920 • ViralUp</small>
+                  <p className="captionPreview">{item.caption}</p>
+                  <small>{mb(item.size)} • 1080×1920 • MP4 + capa + legenda</small>
                 </div>
                 <div className="itemActions">
                   <button onClick={()=>openVideo(item)} title="Visualizar"><Play size={17}/></button>
-                  <button onClick={()=>triggerDownload(item.blob,item.title)} title="Baixar"><Download size={17}/></button>
+                  <button onClick={()=>copyCaption(item)} title="Copiar legenda"><Copy size={17}/></button>
+                  <button onClick={()=>item.cover && downloadBlob(item.cover,`${item.filename}-capa.jpg`)} title="Baixar capa"><ImageIcon size={17}/></button>
+                  <button onClick={()=>downloadPackage(item)} title="Baixar pacote ZIP"><Package size={17}/></button>
                   <button onClick={()=>removeItem(item)} title="Excluir"><Trash2 size={17}/></button>
                 </div>
               </article>
@@ -320,8 +429,8 @@ export default function Home() {
       <section className="publishNote">
         <Send size={20}/>
         <div>
-          <strong>Automatizado até o ponto seguro de publicação</strong>
-          <span>Importação, fila, 9:16, marca ViralUp, metadados, biblioteca e download estão automatizados. A postagem no Kwai continua manual até existir uma API oficial habilitada para a conta.</span>
+          <strong>Pacote final automatizado</strong>
+          <span>Cada ZIP inclui MP4 processado, capa 9:16, legenda com hashtags e dados da campanha. A postagem no Kwai continua manual até existir uma API oficial habilitada para sua conta.</span>
         </div>
       </section>
 
