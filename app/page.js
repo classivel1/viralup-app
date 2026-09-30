@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import JSZip from "jszip";
 import {
-  BadgeCheck, Clapperboard, Copy, Download, Film, Home as HomeIcon, Image as ImageIcon,
+  BadgeCheck, Clapperboard, Copy, Download, ExternalLink, Film, Home as HomeIcon, Image as ImageIcon,
   Library, Package, Play, Plus, Send, Settings, ShieldCheck, Smartphone,
   Trash2, Upload, UserCheck, Video, Zap
 } from "lucide-react";
@@ -25,7 +25,8 @@ const SOURCE_PRESETS = {
     promoLink: "https://reelslink.com/cps/hlj7F0",
     appPromoLink: "https://reelslink.com/cps/7VN12i",
     contentReferralCode: "4993960",
-    episodeStrategy: "Funil de 7 episódios autorizados"
+    episodeStrategy: "Funil de 7 episódios autorizados",
+    sourcePage: "https://cps.reelshort.com/resource-square/detail/67f790bf2e5020721707e329?app=reelshort&book_type=0"
   },
   "NetShort": {
     rightsType: "Parceria / afiliado",
@@ -388,6 +389,7 @@ export default function Home() {
           appPromoLink: settings.appPromoLink?.trim() || "",
           contentReferralCode: settings.contentReferralCode?.trim() || "",
           episodeStrategy: settings.episodeStrategy || "",
+          sourcePage: settings.sourcePage?.trim() || "",
           episodeNumber: meta.episodeNumber,
           funnelStage: meta.funnelStage,
           isLastFreeEpisode: meta.isLastFreeEpisode,
@@ -443,6 +445,7 @@ export default function Home() {
       appPromoLink: item.appPromoLink,
       contentReferralCode: item.contentReferralCode,
       episodeStrategy: item.episodeStrategy,
+      sourcePage: item.sourcePage,
       funnelStage: item.funnelStage,
       isLastFreeEpisode: item.isLastFreeEpisode
     }, null, 2));
@@ -568,6 +571,26 @@ export default function Home() {
             )}
             <label className="wide"><span>Autorização de uso</span><input value={settings.authorization} onChange={(e)=>setSettings({...settings,authorization:e.target.value})} placeholder="Link, código, e-mail ou observação da autorização"/></label>
           </div>
+
+          {settings.source === "ReelShort / RS Boost" && (
+            <div className="remoteSourcePanel">
+              <div>
+                <strong>Episódios oficiais da campanha</strong>
+                <span>Sem baixar e sem copiar mídia: abra diretamente os episódios liberados no RS Boost.</span>
+              </div>
+              <div className="episodeButtons">
+                {Array.from({ length: Number(settings.freeEpisodes) || 0 }, (_, i) => i + 1).map((ep)=>(
+                  <button key={ep} type="button" onClick={()=>window.open(settings.sourcePage, "_blank", "noopener,noreferrer")}>
+                    <Play size={14}/> Ep. {ep}
+                  </button>
+                ))}
+              </div>
+              <a className="sourceLinkButton" href={settings.sourcePage} target="_blank" rel="noreferrer">
+                <ExternalLink size={16}/> Abrir campanha oficial no RS Boost
+              </a>
+              <small>O ViralUp não faz scraping nem baixa episódios automaticamente. O conteúdo continua sendo servido pela plataforma oficial.</small>
+            </div>
+          )}
 
           <div className="toggles">
             <label className="toggleRow">
