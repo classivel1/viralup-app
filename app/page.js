@@ -263,6 +263,7 @@ export default function Home() {
   const [linkEpisode, setLinkEpisode] = useState(1);
   const [importingUrl, setImportingUrl] = useState(false);
   const [publishPlatform, setPublishPlatform] = useState("TikTok");
+  const [activeModule, setActiveModule] = useState("importar");
   const [kwaiEpisodeTitle, setKwaiEpisodeTitle] = useState("");
   const [kwaiEpisodeNumber, setKwaiEpisodeNumber] = useState(1);
   const [settings, setSettings] = useState({
@@ -426,7 +427,8 @@ export default function Home() {
   }
 
   function goTo(id) {
-    document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
+    setActiveModule(id);
+    requestAnimationFrame(() => document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" }));
   }
 
   async function onFiles(event) {
@@ -597,9 +599,13 @@ export default function Home() {
 
       <section className="hero appHero" id="inicio">
         <div className="appStatus"><span className="statusDot"/> AUTO STUDIO ATIVO</div>
-        <p className="eyebrow">AUTOMAÇÃO DE VÍDEO VERTICAL</p>
-        <h1>Seu estúdio ViralUp no celular.</h1>
-        <p className="heroText">Importe, organize e prepare vídeos autorizados para publicação em poucos passos.</p>
+        <div className="heroCompactRow">
+          <div>
+            <p className="eyebrow">VIRALUP STUDIO</p>
+            <h1>Conteúdo pronto, sem bagunça.</h1>
+          </div>
+          <span className="heroMiniStatus"><Zap size={14}/> Automação ativa</span>
+        </div>
         <input ref={inputRef} hidden type="file" accept="video/*" multiple onChange={onFiles}/>
       </section>
 
@@ -613,32 +619,32 @@ export default function Home() {
         </div>
 
         <div className="moduleGrid">
-          <button type="button" onClick={()=>goTo("importar")} className="moduleCard">
+          <button type="button" onClick={()=>goTo("importar")} className={`moduleCard ${activeModule==="importar" ? "active" : ""}`}>
             <span className="moduleIcon"><Download size={19}/></span>
             <span><strong>1. Importar</strong><small>Link ou arquivo do aparelho</small></span>
             <ChevronRight size={17}/>
           </button>
-          <button type="button" onClick={()=>goTo("episodios")} className="moduleCard">
+          <button type="button" onClick={()=>goTo("episodios")} className={`moduleCard ${activeModule==="episodios" ? "active" : ""}`}>
             <span className="moduleIcon"><Clapperboard size={19}/></span>
             <span><strong>2. Episódios</strong><small>Embed e organização da série</small></span>
             <ChevronRight size={17}/>
           </button>
-          <button type="button" onClick={()=>goTo("automacao")} className="moduleCard">
+          <button type="button" onClick={()=>goTo("automacao")} className={`moduleCard ${activeModule==="automacao" ? "active" : ""}`}>
             <span className="moduleIcon"><Settings size={19}/></span>
             <span><strong>3. Campanha</strong><small>Fonte, CTA e autorização</small></span>
             <ChevronRight size={17}/>
           </button>
-          <button type="button" onClick={()=>goTo("biblioteca")} className="moduleCard">
+          <button type="button" onClick={()=>goTo("biblioteca")} className={`moduleCard ${activeModule==="biblioteca" ? "active" : ""}`}>
             <span className="moduleIcon"><Library size={19}/></span>
             <span><strong>4. Biblioteca</strong><small>Vídeos processados e pacotes</small></span>
             <ChevronRight size={17}/>
           </button>
-          <button type="button" onClick={()=>goTo("publicacao")} className="moduleCard">
+          <button type="button" onClick={()=>goTo("publicacao")} className={`moduleCard ${activeModule==="publicacao" ? "active" : ""}`}>
             <span className="moduleIcon"><Send size={19}/></span>
             <span><strong>5. Publicar</strong><small>TikTok e fluxo de postagem</small></span>
             <ChevronRight size={17}/>
           </button>
-          <button type="button" onClick={()=>goTo("contas")} className="moduleCard">
+          <button type="button" onClick={()=>goTo("contas")} className={`moduleCard ${activeModule==="contas" ? "active" : ""}`}>
             <span className="moduleIcon"><UserCheck size={19}/></span>
             <span><strong>6. Contas</strong><small>Safelist e autorizações</small></span>
             <ChevronRight size={17}/>
@@ -646,7 +652,7 @@ export default function Home() {
         </div>
       </section>
 
-      <section className="quickBlocks" id="importar" aria-label="Ações principais">
+      <section className={`quickBlocks moduleView ${activeModule==="importar" ? "show" : ""}`} id="importar" aria-label="Ações principais">
         <article className="quickBlock primaryQuick">
           <div className="quickBlockTitle"><LinkIcon size={18}/><div><strong>Importar por link</strong><span>Link direto de vídeo autorizado</span></div></div>
           <div className="urlImportRow">
@@ -692,13 +698,13 @@ export default function Home() {
         </article>
       </section>
 
-      <section className="metrics">
-        <article><Upload size={18}/><div><strong>{stats.imported}</strong><span>Importados</span></div></article>
-        <article><Clapperboard size={18}/><div><strong>{stats.processing}</strong><span>Processando</span></div></article>
-        <article><Film size={18}/><div><strong>{stats.ready}</strong><span>Prontos</span></div></article>
+      <section className="metrics compactMetrics">
+        <article><strong>{stats.imported}</strong><span>Importados</span></article>
+        <article><strong>{stats.processing}</strong><span>Processando</span></article>
+        <article><strong>{stats.ready}</strong><span>Prontos</span></article>
       </section>
 
-      <section className="section functionalSection" id="contas">
+      <section className={`section functionalSection moduleView ${activeModule==="contas" ? "show" : ""}`} id="contas">
         <div className="sectionHeading">
           <div><p className="eyebrow">CONTAS AUTORIZADAS</p><h2>Safelist e publicação</h2></div>
           <span className="safeBadge ok"><UserCheck size={16}/> {accounts.length} conta cadastrada</span>
@@ -722,7 +728,7 @@ export default function Home() {
         </div>
       </section>
 
-      <section className="section functionalSection" id="automacao">
+      <section className={`section functionalSection moduleView ${activeModule==="automacao" ? "show" : ""}`} id="automacao">
         <div className="sectionHeading">
           <div><p className="eyebrow">MODO AUTOMÁTICO</p><h2>Padrão da campanha</h2></div>
           <span className={configured ? "safeBadge ok" : "safeBadge"}><ShieldCheck size={16}/> {configured ? "Configurado" : "Falta autorização"}</span>
@@ -774,7 +780,7 @@ export default function Home() {
           </div>
 
           {settings.source === "ReelShort / RS Boost" && (
-            <div className="remoteSourcePanel modulePanel" id="episodios">
+            <div className={`remoteSourcePanel modulePanel moduleView ${activeModule==="episodios" ? "show" : ""}`} id="episodios">
               <div className="blockKicker">BLOCO 2 • EPISÓDIOS</div>
               <div>
                 <strong>Player oficial ReelShort</strong>
@@ -878,7 +884,7 @@ export default function Home() {
         </section>
       )}
 
-      <section className="section functionalSection" id="biblioteca">
+      <section className={`section functionalSection moduleView ${activeModule==="biblioteca" ? "show" : ""}`} id="biblioteca">
         <div className="sectionHeading"><div><p className="eyebrow">BIBLIOTECA</p><h2>Pacotes prontos para publicar</h2></div></div>
 
         {library.length === 0 ? (
@@ -922,7 +928,7 @@ export default function Home() {
         )}
       </section>
 
-      <section className="functionalSection publishWorkspace" id="publicacao">
+      <section className={`functionalSection publishWorkspace moduleView ${activeModule==="publicacao" ? "show" : ""}`} id="publicacao">
         <div className="sectionHeading publishHeading">
           <div>
             <p className="eyebrow">PUBLICAÇÃO</p>
