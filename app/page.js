@@ -262,6 +262,9 @@ export default function Home() {
   const [videoUrl, setVideoUrl] = useState("");
   const [linkEpisode, setLinkEpisode] = useState(1);
   const [importingUrl, setImportingUrl] = useState(false);
+  const [publishPlatform, setPublishPlatform] = useState("TikTok");
+  const [kwaiEpisodeTitle, setKwaiEpisodeTitle] = useState("");
+  const [kwaiEpisodeNumber, setKwaiEpisodeNumber] = useState(1);
   const [settings, setSettings] = useState({
     source: "ReelShort / RS Boost",
     sourceCustom: "",
@@ -557,6 +560,21 @@ export default function Home() {
     const url = "https://www.tiktok.com/upload";
     window.open(url, "_blank", "noopener,noreferrer");
     setStatus(`TikTok aberto para publicar o Episódio ${item.episodeNumber || ""}. Use a legenda já preparada no ViralUp.`);
+  }
+
+  async function copyKwaiEpisodeData(item) {
+    const payload = [
+      `Título: ${kwaiEpisodeTitle || item.title || `Episódio ${item.episodeNumber || kwaiEpisodeNumber}`}`,
+      `Episódio: ${item.episodeNumber || kwaiEpisodeNumber}`,
+      `Legenda: ${item.caption || ""}`
+    ].join("\n");
+    await navigator.clipboard.writeText(payload);
+    setStatus("Dados do episódio copiados para o cadastro no Kwai.");
+  }
+
+  function openKwai() {
+    window.open("https://www.kwai.com/", "_blank", "noopener,noreferrer");
+    setStatus("Kwai aberto. Continue o cadastro do episódio na plataforma.");
   }
 
   async function removeItem(item) {
@@ -904,12 +922,77 @@ export default function Home() {
         )}
       </section>
 
-      <section className="publishNote functionalSection" id="publicacao">
-        <Send size={20}/>
-        <div>
-          <strong>Publicação preparada para o TikTok</strong>
-          <span>O ViralUp prepara vídeo, capa, legenda, hashtags e CTA. Use “Abrir TikTok” para continuar a postagem manualmente na conta @viralup enquanto não houver integração oficial de publicação habilitada.</span>
+      <section className="functionalSection publishWorkspace" id="publicacao">
+        <div className="sectionHeading publishHeading">
+          <div>
+            <p className="eyebrow">PUBLICAÇÃO</p>
+            <h2>TikTok e Kwai</h2>
+          </div>
+          <div className="publishTabs" role="tablist">
+            <button type="button" className={publishPlatform==="TikTok" ? "active" : ""} onClick={()=>setPublishPlatform("TikTok")}>TikTok</button>
+            <button type="button" className={publishPlatform==="Kwai" ? "active" : ""} onClick={()=>setPublishPlatform("Kwai")}>Kwai</button>
+          </div>
         </div>
+
+        {publishPlatform === "TikTok" ? (
+          <div className="publishPlatformCard">
+            <div className="platformLead">
+              <Send size={20}/>
+              <div>
+                <strong>Publicar no TikTok</strong>
+                <span>Use os botões de cada vídeo da biblioteca para copiar legenda, baixar o vídeo e abrir a página de publicação.</span>
+              </div>
+            </div>
+            <button className="compactAction" type="button" onClick={()=>window.open("https://www.tiktok.com/upload","_blank","noopener,noreferrer")}>
+              <ExternalLink size={16}/> Abrir TikTok
+            </button>
+          </div>
+        ) : (
+          <div className="publishPlatformCard kwaiCard">
+            <div className="platformLead">
+              <Clapperboard size={20}/>
+              <div>
+                <strong>Cadastrar episódios no Kwai</strong>
+                <span>Fluxo separado para organizar título, número do episódio e os arquivos que serão enviados.</span>
+              </div>
+            </div>
+
+            <div className="kwaiForm">
+              <label>
+                <span>Título do episódio</span>
+                <input value={kwaiEpisodeTitle} onChange={(e)=>setKwaiEpisodeTitle(e.target.value)} placeholder="Ex.: Episódio 1" />
+              </label>
+              <label>
+                <span>Número</span>
+                <input type="number" min="1" value={kwaiEpisodeNumber} onChange={(e)=>setKwaiEpisodeNumber(e.target.value)} />
+              </label>
+            </div>
+
+            <div className="kwaiEpisodeList">
+              {library.length === 0 ? (
+                <div className="emptyLibrary compactEmpty"><Video size={26}/><strong>Nenhum vídeo pronto</strong><span>Importe ou processe um episódio primeiro.</span></div>
+              ) : (
+                library.slice(0,8).map((item)=>(
+                  <article className="kwaiEpisodeRow" key={item.id}>
+                    <div className="kwaiEpisodeInfo">
+                      <strong>{item.title}</strong>
+                      <span>Episódio {item.episodeNumber || "—"} • {mb(item.size)}</span>
+                    </div>
+                    <div className="kwaiEpisodeActions">
+                      <button type="button" onClick={()=>copyKwaiEpisodeData(item)}><Copy size={15}/> Dados</button>
+                      <button type="button" onClick={()=>downloadVideoOnly(item)}><Download size={15}/> Vídeo</button>
+                    </div>
+                  </article>
+                ))
+              )}
+            </div>
+
+            <div className="kwaiBottomActions">
+              <button className="ghostButton" type="button" onClick={()=>goTo("biblioteca")}><Library size={16}/> Biblioteca</button>
+              <button className="primaryButton" type="button" onClick={openKwai}><ExternalLink size={16}/> Abrir Kwai</button>
+            </div>
+          </div>
+        )}
       </section>
 
       <nav className="mobileNav" aria-label="Navegação principal">
