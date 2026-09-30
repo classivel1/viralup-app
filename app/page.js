@@ -458,6 +458,17 @@ export default function Home() {
     setStatus("Legenda e hashtags copiadas.");
   }
 
+  function downloadVideoOnly(item) {
+    downloadBlob(item.blob, `${item.filename}.mp4`);
+    setStatus("Vídeo baixado. Agora abra o TikTok e selecione o arquivo.");
+  }
+
+  function openTikTok(item) {
+    const url = "https://www.tiktok.com/upload";
+    window.open(url, "_blank", "noopener,noreferrer");
+    setStatus(`TikTok aberto para publicar o Episódio ${item.episodeNumber || ""}. Use a legenda já preparada no ViralUp.`);
+  }
+
   async function removeItem(item) {
     await deleteVideo(item.id);
     await refresh();
@@ -644,8 +655,20 @@ export default function Home() {
                   <button onClick={()=>openVideo(item)} title="Visualizar"><Play size={17}/></button>
                   <button onClick={()=>copyCaption(item)} title="Copiar legenda"><Copy size={17}/></button>
                   <button onClick={()=>item.cover && downloadBlob(item.cover,`${item.filename}-capa.jpg`)} title="Baixar capa"><ImageIcon size={17}/></button>
+                  <button onClick={()=>downloadVideoOnly(item)} title="Baixar vídeo"><Download size={17}/></button>
                   <button onClick={()=>downloadPackage(item)} title="Baixar pacote ZIP"><Package size={17}/></button>
                   <button onClick={()=>removeItem(item)} title="Excluir"><Trash2 size={17}/></button>
+                </div>
+                <div className="tiktokPublish">
+                  <div>
+                    <strong>Publicar no TikTok</strong>
+                    <span>Episódio {item.episodeNumber || "—"} • @viralup</span>
+                  </div>
+                  <div className="tiktokButtons">
+                    <button type="button" onClick={()=>copyCaption(item)}><Copy size={16}/> Copiar legenda</button>
+                    <button type="button" onClick={()=>downloadVideoOnly(item)}><Download size={16}/> Baixar vídeo</button>
+                    <button className="tiktokPrimary" type="button" onClick={()=>openTikTok(item)}><Send size={16}/> Abrir TikTok</button>
+                  </div>
                 </div>
               </article>
             ))}
@@ -656,8 +679,8 @@ export default function Home() {
       <section className="publishNote">
         <Send size={20}/>
         <div>
-          <strong>Pacote final automatizado</strong>
-          <span>Cada ZIP inclui MP4 processado, capa 9:16, legenda com hashtags e dados da campanha. A postagem no Kwai continua manual até existir uma API oficial habilitada para sua conta.</span>
+          <strong>Publicação preparada para o TikTok</strong>
+          <span>O ViralUp prepara vídeo, capa, legenda, hashtags e CTA. Use “Abrir TikTok” para continuar a postagem manualmente na conta @viralup enquanto não houver integração oficial de publicação habilitada.</span>
         </div>
       </section>
 
