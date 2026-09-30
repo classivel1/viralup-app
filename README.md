@@ -1,43 +1,27 @@
 # ViralUp Studio
 
-MVP web responsivo para organizar o fluxo de conteúdo vertical da ViralUp.
+Aplicação web responsiva para preparar vídeos verticais autorizados.
 
-## Objetivo
+## Funcional na versão atual
 
-Fluxo inicial:
+- Upload real de vídeo no navegador
+- Registro de origem, campanha e autorização de uso
+- Processamento server-side com FFmpeg
+- Saída MP4 1080x1920 em 9:16 sem esticar o conteúdo
+- Biblioteca persistente no próprio navegador usando IndexedDB
+- Visualização, download e exclusão de vídeos processados
+- Auto-deploy pelo Render conectado ao branch main
 
-1. Importar somente material com autorização de uso.
-2. Registrar origem, campanha e direitos.
-3. Preparar o vídeo em formato vertical 9:16.
-4. Aplicar identidade visual ViralUp.
-5. Revisar e colocar na fila "Pronto para publicar".
-6. Publicar manualmente no Kwai até existir uma integração oficial autorizada e disponível.
+## Limite atual
 
-## Rodar localmente
+A primeira versão limita cada vídeo a 25 MB para manter o processamento estável no plano gratuito.
 
-```bash
-npm install
-npm run dev
-```
+Os arquivos processados ficam armazenados localmente no aparelho/navegador do usuário. Isso evita depender de storage externo neste MVP e mantém o conteúdo fora do repositório.
 
-Abra `http://localhost:3000`.
+## Publicação
 
-## Deploy
-
-O projeto inclui `Dockerfile` e está preparado para deploy em serviço compatível com Node.js, incluindo Railway.
-
-## Próximas etapas
-
-- Upload real de vídeo
-- Banco de dados
-- Metadados de autorização/campanha
-- Storage
-- Worker FFmpeg 1080x1920
-- Branding automático ViralUp
-- Histórico de processamento
-- Fila de publicação
-- Login e painel administrativo
+A publicação no Kwai permanece manual até existir uma integração/API oficial autorizada e disponível para a conta.
 
 ## Segurança
 
-Nunca coloque tokens, senhas ou chaves de API no repositório. Use variáveis de ambiente/secrets do provedor de deploy.
+Nunca coloque tokens, senhas ou chaves de API no GitHub.
