@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import JSZip from "jszip";
 import {
   BadgeCheck, Clapperboard, Copy, Download, ExternalLink, Film, Home as HomeIcon, Image as ImageIcon,
-  Library, Package, Play, Plus, Send, Settings, ShieldCheck, Smartphone,
+  Library, Link as LinkIcon, Package, Play, Plus, Send, Settings, ShieldCheck, Smartphone,
   Trash2, Upload, UserCheck, Video, Zap
 } from "lucide-react";
 
@@ -259,6 +259,9 @@ export default function Home() {
   const [embeds, setEmbeds] = useState(OFFICIAL_EMBEDS["ReelShort / RS Boost"] || []);
   const [embedEpisode, setEmbedEpisode] = useState(2);
   const [embedCode, setEmbedCode] = useState("");
+  const [videoUrl, setVideoUrl] = useState("");
+  const [linkEpisode, setLinkEpisode] = useState(1);
+  const [importingUrl, setImportingUrl] = useState(false);
   const [settings, setSettings] = useState({
     source: "ReelShort / RS Boost",
     sourceCustom: "",
@@ -373,6 +376,42 @@ export default function Home() {
     setStatus(`Episódio ${episode} removido do player.`);
   }
 
+  async function importVideoUrl(urlOverride) {
+    const url = (urlOverride ?? videoUrl).trim();
+    if (!url || importingUrl) return;
+    if (!configured) return setStatus("Configure a origem e a autorização antes de importar por link.");
+
+    setImportingUrl(true);
+    setStatus("Importando vídeo pelo link...");
+
+    try {
+      const response = await fetch("/api/import-url", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url })
+      });
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({}));
+        throw new Error(error.error || "Não foi possível importar esse link.");
+      }
+
+      const blob = await response.blob();
+      const disposition = response.headers.get("content-disposition") || "";
+      const nameMatch = disposition.match(/filename="?([^"]+)"?/i);
+      const fallbackName = `episodio-${linkEpisode}.mp4`;
+      const filename = nameMatch?.[1] || fallbackName;
+      const file = new File([blob], filename, { type: blob.type || "video/mp4" });
+
+      setVideoUrl("");
+      await runBatch([file], Math.max(Number(linkEpisode) - 1, 0));
+      setLinkEpisode((n) => Number(n) + 1);
+    } catch (error) {
+      setStatus(error.message);
+    } finally {
+      setImportingUrl(false);
+    }
+  }
+
   async function installApp() {
     if (!installPrompt) {
       setStatus("No Android/Chrome, abra o menu do navegador e escolha “Adicionar à tela inicial” ou “Instalar app”.");
@@ -398,7 +437,7 @@ export default function Home() {
     if (valid.length && settings.autoMode && configured) await runBatch(valid);
   }
 
-  async function runBatch(files = queue) {
+  async function runBatch(files = queue, startIndex = 0) {
     if (!files.length) return setStatus("Adicione um ou mais vídeos.");
     if (!configured) return setStatus("Preencha origem e autorização de uso antes de automatizar.");
 
@@ -406,7 +445,7 @@ export default function Home() {
     let done = 0;
 
     for (const [index, file] of files.entries()) {
-      const meta = buildMetadata(file, settings, index);
+      const meta = buildMetadata(file, settings, index + startIndex);
       setCurrent(file.name);
       setStatus(`Processando ${index + 1} de ${files.length}: ${file.name}`);
 
@@ -542,15 +581,54 @@ export default function Home() {
         <div className="appStatus"><span className="statusDot"/> AUTO STUDIO ATIVO</div>
         <p className="eyebrow">AUTOMAÇÃO DE VÍDEO VERTICAL</p>
         <h1>Seu estúdio ViralUp no celular.</h1>
-        <p className="heroText">
-          O sistema processa em 9:16, cria título, legenda, hashtags, nome de arquivo,
-          capa 9:16 e um pacote ZIP pronto para postagem.
-        </p>
-        <div className="actions">
-          <button className="primaryButton" onClick={pickFiles} disabled={busy}><Upload size={19}/> Selecionar vídeos</button>
-          <button className="ghostButton" onClick={() => document.getElementById("automacao")?.scrollIntoView({behavior:"smooth"})}><Settings size={19}/> Configurar automação</button>
-        </div>
+        <p className="heroText">Importe, organize e prepare vídeos autorizados para publicação em poucos passos.</p>
         <input ref={inputRef} hidden type="file" accept="video/*" multiple onChange={onFiles}/>
+      </section>
+
+      <section className="quickBlocks" aria-label="Ações principais">
+        <article className="quickBlock primaryQuick">
+          <div className="quickBlockTitle"><LinkIcon size={18}/><div><strong>Importar por link</strong><span>Link direto de vídeo autorizado</span></div></div>
+          <div className="urlImportRow">
+            <input
+              value={videoUrl}
+              onChange={(e)=>setVideoUrl(e.target.value)}
+              onPaste={(e)=>{
+                const pasted = e.clipboardData.getData("text");
+                if (/^https?:\/\//i.test(pasted.trim())) setTimeout(()=>importVideoUrl(pasted), 0);
+              }}
+              onKeyDown={(e)=>{ if(e.key === "Enter") importVideoUrl(); }}
+              placeholder="Cole o link direto do vídeo"
+              inputMode="url"
+            />
+            <input
+              className="episodeMiniInput"
+              type="number"
+              min="1"
+              value={linkEpisode}
+              onChange={(e)=>setLinkEpisode(e.target.value)}
+              title="Número do episódio"
+            />
+            <button type="button" onClick={()=>importVideoUrl()} disabled={importingUrl || !videoUrl.trim()}>
+              {importingUrl ? <span className="miniSpinner"/> : <Download size={17}/>}
+              {importingUrl ? "Importando" : "Importar"}
+            </button>
+          </div>
+          <small>Ao colar um link direto, a importação inicia automaticamente. Páginas comuns não são extraídas nem raspadas.</small>
+        </article>
+
+        <article className="quickBlock">
+          <div className="quickBlockTitle"><Upload size={18}/><div><strong>Arquivo do aparelho</strong><span>MP4, MOV, WebM • até 25 MB</span></div></div>
+          <button className="compactAction" type="button" onClick={pickFiles} disabled={busy}>
+            <Upload size={16}/> Selecionar vídeos
+          </button>
+        </article>
+
+        <article className="quickBlock">
+          <div className="quickBlockTitle"><Settings size={18}/><div><strong>Campanha</strong><span>{settings.campaign || settings.source}</span></div></div>
+          <button className="compactAction" type="button" onClick={()=>goTo("automacao")}>
+            <Settings size={16}/> Configurar
+          </button>
+        </article>
       </section>
 
       <section className="metrics">
