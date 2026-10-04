@@ -1,1015 +1,430 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import JSZip from "jszip";
 import {
-  BadgeCheck, Clapperboard, Copy, Download, ExternalLink, Film, Home as HomeIcon, Image as ImageIcon,
-  ChevronRight, Library, Link as LinkIcon, Package, Play, Plus, Send, Settings, ShieldCheck, Smartphone,
-  Trash2, Upload, UserCheck, Video, Zap
+  BadgeCheck, ChevronRight, Clapperboard, Coins, Download, Film, FolderClock, Image as ImageIcon,
+  Layers3, LogIn, LogOut, Menu, Mic2, MonitorUp, PackageOpen, Play, Plus, Settings2, Sparkles,
+  Subtitles, Upload, UserRound, Video, Wand2, X, Zap
 } from "lucide-react";
+import styles from "./studio.module.css";
 
-const DB_NAME = "viralup-studio";
-const STORE = "videos";
-const SETTINGS_KEY = "viralup-auto-settings";
-const ACCOUNTS_KEY = "viralup-authorized-accounts";
-const EMBEDS_KEY = "viralup-official-embeds";
-const OFFICIAL_EMBEDS = {
-  "ReelShort / RS Boost": [
-    {
-      episode: 1,
-      title: "Episódio 1",
-      src: "https://www.reelshort.com/pt/embed/6aad002ad47530b9bc0fa1d1-0keqwyvo48?show_controls=true&cps_id=18416&code=4994030"
-    }
-  ]
-};
-const DEFAULT_ACCOUNTS = [{ id: "reelshort-tiktok-viralup", platform: "TikTok", account: "@viralup", source: "ReelShort / RS Boost", status: "Pending Update", note: "Cadastro enviado ao Creator Safelist", updatedAt: "2026-09-30" }];
+const SESSION_KEY = "viralup_studio_session";
+const PROJECTS_KEY = "viralup_studio_projects";
+const DEMO_CREDITS_KEY = "viralup_studio_demo_credits";
 
-const SOURCE_PRESETS = {
-  "ReelShort / RS Boost": {
-    rightsType: "Campanha promocional autorizada",
-    campaign: "Apaixonada pelo Dr. Papai do Bebê!",
-    authorization: "RS Boost Creator Safelist | TikTok @viralup | Status: Pending Update | Cadastro: 30/09/2026",
-    cta: "Siga a @viralup para mais episódios",
-    totalEpisodes: 85,
-    freeEpisodes: 7,
-    promoLink: "https://reelslink.com/cps/hlj7F0",
-    appPromoLink: "https://reelslink.com/cps/7VN12i",
-    contentReferralCode: "4993960",
-    episodeStrategy: "Funil de 7 episódios autorizados",
-    sourcePage: "https://cps.reelshort.com/resource-square/detail/67f790bf2e5020721707e329?app=reelshort&book_type=0"
-  },
-  "NetShort": {
-    rightsType: "Parceria / afiliado",
-    campaign: "",
-    authorization: "",
-    cta: "Siga a @viralup para mais episódios"
-  },
-  "Upload próprio": {
-    rightsType: "Conteúdo próprio",
-    campaign: "ViralUp Original",
-    authorization: "Conteúdo próprio da ViralUp",
-    cta: "Siga a @viralup para mais vídeos"
-  },
-  "Outro parceiro": {
-    rightsType: "Outro",
-    campaign: "",
-    authorization: "",
-    cta: "Siga a @viralup para mais vídeos"
-  }
-};
+const TOOLS = [
+  { id: "product-video", title: "Foto → Vídeo", desc: "Anime fotos de produtos em anúncios verticais.", icon: Sparkles, tag: "MAIS USADO", kind: "video", accepts: "image/*", cost: 12 },
+  { id: "ai-video", title: "Gerador de Vídeo", desc: "Texto ou imagem para vídeo com IA.", icon: Video, tag: "IA", kind: "video", accepts: "image/*,video/*", cost: 18 },
+  { id: "ugc", title: "Vídeo UGC", desc: "Roteiros de review, demonstração e unboxing.", icon: UserRound, tag: "VENDA", kind: "video", accepts: "image/*,video/*", cost: 18 },
+  { id: "avatar", title: "Avatar IA", desc: "Apresentador virtual para oferta e produto.", icon: Mic2, tag: "IA", kind: "video", accepts: "image/*", cost: 18 },
+  { id: "thumbnail", title: "Miniatura IA", desc: "Capas de TikTok, Reels, Shorts e YouTube.", icon: ImageIcon, tag: "IMAGEM", kind: "image", accepts: "image/*", cost: 4 },
+  { id: "image-enhancer", title: "Melhorar Imagem", desc: "Recupere definição e prepare fotos para venda.", icon: Wand2, kind: "image", accepts: "image/*", cost: 4 },
+  { id: "video-enhancer", title: "Melhorar Vídeo", desc: "Fluxo preparado para upscale e restauração.", icon: MonitorUp, kind: "video", accepts: "video/*", cost: 4 },
+  { id: "background", title: "Remover Fundo", desc: "Ferramenta de edição para imagens de produto.", icon: Layers3, kind: "image", accepts: "image/*", cost: 4 },
+  { id: "remove-object", title: "Remover Objeto", desc: "Limpeza visual de texto e elementos indesejados.", icon: Wand2, kind: "image", accepts: "image/*", cost: 4 },
+  { id: "captions", title: "Legendas IA", desc: "Transcrição, estilo e sincronização de legendas.", icon: Subtitles, kind: "video", accepts: "video/*,audio/*", cost: 3 },
+  { id: "noise", title: "Limpar Áudio", desc: "Redução de ruído e preparação de voz.", icon: Mic2, kind: "audio", accepts: "video/*,audio/*", cost: 3 },
+  { id: "translator", title: "Traduzir Vídeo", desc: "Fluxo de tradução e dublagem para novos públicos.", icon: Clapperboard, kind: "video", accepts: "video/*", cost: 3 },
+];
 
-function openDb() {
+function loadJson(key, fallback) {
+  if (typeof window === "undefined") return fallback;
+  try { return JSON.parse(localStorage.getItem(key) || "null") ?? fallback; } catch { return fallback; }
+}
+
+function persistJson(key, value) {
+  if (typeof window === "undefined") return;
+  try { localStorage.setItem(key, JSON.stringify(value)); } catch {}
+}
+
+function tokenHeaders(session) {
+  return session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {};
+}
+
+function formatDate(iso) {
+  try { return new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short" }).format(new Date(iso)); }
+  catch { return "agora"; }
+}
+
+function readAsDataUrl(file) {
   return new Promise((resolve, reject) => {
-    const request = indexedDB.open(DB_NAME, 1);
-    request.onupgradeneeded = () => {
-      if (!request.result.objectStoreNames.contains(STORE)) {
-        request.result.createObjectStore(STORE, { keyPath: "id" });
-      }
-    };
-    request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error);
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
   });
 }
 
-async function dbAction(mode, action) {
-  const db = await openDb();
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(STORE, mode);
-    action(tx.objectStore(STORE), resolve, reject);
-    tx.onerror = () => reject(tx.error);
-  });
-}
-
-async function getAllVideos() {
-  return dbAction("readonly", (store, resolve, reject) => {
-    const req = store.getAll();
-    req.onsuccess = () => resolve(req.result.sort((a,b)=>b.createdAt-a.createdAt));
-    req.onerror = () => reject(req.error);
-  });
-}
-
-async function saveVideo(item) {
-  return dbAction("readwrite", (store, resolve) => {
-    store.put(item);
-    resolve();
-  });
-}
-
-async function deleteVideo(id) {
-  return dbAction("readwrite", (store, resolve) => {
-    store.delete(id);
-    resolve();
-  });
-}
-
-function mb(size) {
-  return `${(size / 1024 / 1024).toFixed(1)} MB`;
-}
-
-function baseName(name) {
-  return name.replace(/\.[^.]+$/, "");
-}
-
-function titleize(value) {
-  return value
-    .replace(/[_-]+/g, " ")
-    .replace(/\s+/g, " ")
-    .trim()
-    .replace(/\b\w/g, (m) => m.toUpperCase());
-}
-
-function slug(value) {
-  return value
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/(^-|-$)/g, "")
-    .slice(0, 70) || "viralup-video";
-}
-
-function buildMetadata(file, settings, index) {
-  const raw = titleize(baseName(file.name));
-  const campaign = titleize(settings.campaign || "");
-  const episodeNumber = index + 1;
-  const isReelShort = settings.source === "ReelShort / RS Boost";
-  const isLastFreeEpisode = isReelShort && Number(settings.freeEpisodes) > 0 && episodeNumber === Number(settings.freeEpisodes);
-  const title = campaign ? `${campaign} • Episódio ${episodeNumber} • ${raw}` : `Episódio ${episodeNumber} • ${raw}`;
-
-  const hooks = [
-    "Você precisa ver isso até o fim.",
-    "O final muda tudo.",
-    "Esse momento merece atenção.",
-    "A decisão dela muda tudo.",
-    "Você faria o mesmo nessa situação?",
-    "Espere até ver o que acontece depois."
-  ];
-  const hook = hooks[index % hooks.length];
-
-  const standardCta = settings.cta?.trim() || "Siga a @viralup para mais episódios";
-  const finalCta = settings.promoLink?.trim()
-    ? "Quer continuar a história? Assista aos próximos episódios pelo link da bio."
-    : "Quer continuar a história? Procure o link oficial da campanha na bio.";
-  const cta = isLastFreeEpisode ? finalCta : standardCta;
-
-  const hashtags = ["#ViralUp", "#MiniDrama", "#SerieCurta", "#TikTokSeries", "#Entretenimento"];
-  const caption = `${hook} Episódio ${episodeNumber}: ${campaign || raw}. ${cta} ${hashtags.join(" ")}`;
-  const filename = `${slug(campaign || raw)}-ep-${String(episodeNumber).padStart(2,"0")}-viralup`;
-
-  return {
-    title,
-    caption,
-    hashtags,
-    filename,
-    episodeNumber,
-    isLastFreeEpisode,
-    promoLink: settings.promoLink || "",
-    funnelStage: isLastFreeEpisode ? "redirect" : "retention"
-  };
-}
-
-async function makeCover(videoBlob, title) {
-  const url = URL.createObjectURL(videoBlob);
-  try {
-    const video = document.createElement("video");
-    video.src = url;
-    video.muted = true;
-    video.playsInline = true;
-
-    await new Promise((resolve, reject) => {
-      video.onloadedmetadata = resolve;
-      video.onerror = reject;
-    });
-
-    const seekTo = Math.min(Math.max(video.duration * 0.18, 0.5), Math.max(video.duration - 0.2, 0.5));
-    video.currentTime = seekTo;
-    await new Promise((resolve) => {
-      video.onseeked = resolve;
-      setTimeout(resolve, 1200);
-    });
-
-    const canvas = document.createElement("canvas");
-    canvas.width = 1080;
-    canvas.height = 1920;
-    const ctx = canvas.getContext("2d");
-    ctx.fillStyle = "#08090b";
-    ctx.fillRect(0, 0, 1080, 1920);
-
-    const vw = video.videoWidth || 1080;
-    const vh = video.videoHeight || 1920;
-    const scale = Math.min(1080 / vw, 1920 / vh);
-    const dw = vw * scale;
-    const dh = vh * scale;
-    ctx.drawImage(video, (1080-dw)/2, (1920-dh)/2, dw, dh);
-
-    const grad = ctx.createLinearGradient(0, 1250, 0, 1920);
-    grad.addColorStop(0, "rgba(0,0,0,0)");
-    grad.addColorStop(1, "rgba(0,0,0,.88)");
-    ctx.fillStyle = grad;
-    ctx.fillRect(0, 1180, 1080, 740);
-
-    ctx.fillStyle = "#ff6422";
-    ctx.font = "900 58px Arial";
-    ctx.fillText("ViralUp", 64, 120);
-
-    ctx.fillStyle = "#fff";
-    ctx.font = "900 72px Arial";
-    const words = title.split(" ");
-    const lines = [];
-    let line = "";
-    for (const word of words) {
-      const test = line ? `${line} ${word}` : word;
-      if (ctx.measureText(test).width > 900 && line) {
-        lines.push(line);
-        line = word;
-      } else line = test;
-      if (lines.length === 2) break;
-    }
-    if (line && lines.length < 3) lines.push(line);
-    lines.slice(0,3).forEach((text, i)=>ctx.fillText(text, 64, 1540 + i*88));
-
-    ctx.fillStyle = "#ff6a22";
-    ctx.font = "700 36px Arial";
-    ctx.fillText("@ViralUp", 64, 1845);
-
-    return await new Promise((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.9));
-  } finally {
-    URL.revokeObjectURL(url);
-  }
-}
-
-function downloadBlob(blob, filename) {
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  a.click();
-  setTimeout(()=>URL.revokeObjectURL(url), 1500);
-}
-
-export default function Home() {
-  const inputRef = useRef(null);
-  const [library, setLibrary] = useState([]);
-  const [queue, setQueue] = useState([]);
-  const [busy, setBusy] = useState(false);
-  const [current, setCurrent] = useState("");
-  const [status, setStatus] = useState("");
-  const [installPrompt, setInstallPrompt] = useState(null);
-  const [accounts, setAccounts] = useState(DEFAULT_ACCOUNTS);
-  const [embeds, setEmbeds] = useState(OFFICIAL_EMBEDS["ReelShort / RS Boost"] || []);
-  const [embedEpisode, setEmbedEpisode] = useState(2);
-  const [embedCode, setEmbedCode] = useState("");
-  const [videoUrl, setVideoUrl] = useState("");
-  const [linkEpisode, setLinkEpisode] = useState(1);
-  const [importingUrl, setImportingUrl] = useState(false);
-  const [publishPlatform, setPublishPlatform] = useState("TikTok");
-  const [activeModule, setActiveModule] = useState("importar");
-  const [kwaiEpisodeTitle, setKwaiEpisodeTitle] = useState("");
-  const [kwaiEpisodeNumber, setKwaiEpisodeNumber] = useState(1);
-  const [settings, setSettings] = useState({
-    source: "ReelShort / RS Boost",
-    sourceCustom: "",
-    ...SOURCE_PRESETS["ReelShort / RS Boost"],
-    autoMode: true,
-    autoDownload: false
-  });
-
-  const refresh = async () => setLibrary(await getAllVideos());
+export default function StudioPage() {
+  const [tab, setTab] = useState("home");
+  const [config, setConfig] = useState({ mode: "demo", providers: {}, auth: false, billing: false });
+  const [session, setSession] = useState(null);
+  const [projects, setProjects] = useState([]);
+  const [credits, setCredits] = useState(120);
+  const [tool, setTool] = useState(null);
+  const [authOpen, setAuthOpen] = useState(false);
+  const pollers = useRef(new Map());
 
   useEffect(() => {
-    refresh().catch(() => setStatus("Não foi possível abrir a biblioteca deste aparelho."));
-    try {
-      const saved = JSON.parse(localStorage.getItem(SETTINGS_KEY) || "null");
-      if (saved) {
-        const source = saved.source || "ReelShort / RS Boost";
-        const preset = SOURCE_PRESETS[source] || {};
-        const hydrated = { ...preset, ...saved };
-        if (source === "ReelShort / RS Boost" && !hydrated.authorization) {
-          Object.assign(hydrated, SOURCE_PRESETS["ReelShort / RS Boost"]);
-        }
-        setSettings((s) => ({ ...s, ...hydrated }));
-      }
-      const savedAccounts = JSON.parse(localStorage.getItem(ACCOUNTS_KEY) || "null");
-      if (savedAccounts?.length) setAccounts(savedAccounts);
-      else localStorage.setItem(ACCOUNTS_KEY, JSON.stringify(DEFAULT_ACCOUNTS));
-
-      const savedEmbeds = JSON.parse(localStorage.getItem(EMBEDS_KEY) || "null");
-      if (savedEmbeds?.length) setEmbeds(savedEmbeds);
-      else localStorage.setItem(EMBEDS_KEY, JSON.stringify(OFFICIAL_EMBEDS["ReelShort / RS Boost"] || []));
-    } catch {}
-
-    if ("serviceWorker" in navigator) {
-      navigator.serviceWorker.register("/sw.js").catch(() => {});
-    }
-
-    const onInstall = (event) => {
-      event.preventDefault();
-      setInstallPrompt(event);
+    setSession(loadJson(SESSION_KEY, null));
+    setProjects(loadJson(PROJECTS_KEY, []));
+    setCredits(Number(localStorage.getItem(DEMO_CREDITS_KEY) || 120));
+    fetch("/api/studio/config").then(r => r.json()).then(setConfig).catch(() => {});
+    return () => {
+      for (const id of pollers.current.values()) clearInterval(id);
+      pollers.current.clear();
     };
-    window.addEventListener("beforeinstallprompt", onInstall);
-    return () => window.removeEventListener("beforeinstallprompt", onInstall);
   }, []);
 
-  const stats = useMemo(() => ({
-    imported: library.length,
-    processing: busy ? 1 : 0,
-    ready: library.filter((x) => x.status === "ready").length
-  }), [library, busy]);
+  useEffect(() => {
+    persistJson(PROJECTS_KEY, projects.slice(0, 50));
+  }, [projects]);
 
-  const resolvedSource = settings.source === "Outro parceiro"
-    ? settings.sourceCustom.trim()
-    : settings.source.trim();
-  const configured = Boolean(resolvedSource && settings.authorization.trim());
+  useEffect(() => {
+    if (session?.access_token) refreshCredits(session);
+  }, [session]);
 
-  function saveSettings(next = settings) {
-    setSettings(next);
-    localStorage.setItem(SETTINGS_KEY, JSON.stringify(next));
-    setStatus("Padrão automático salvo neste aparelho.");
-  }
-
-  function applySourcePreset(source) {
-    const preset = SOURCE_PRESETS[source] || SOURCE_PRESETS["Outro parceiro"];
-    const next = {
-      ...settings,
-      source,
-      sourceCustom: source === "Outro parceiro" ? settings.sourceCustom : "",
-      ...preset
-    };
-    setSettings(next);
-    localStorage.setItem(SETTINGS_KEY, JSON.stringify(next));
-    setStatus(source === "ReelShort / RS Boost"
-      ? "Fonte ReelShort configurada automaticamente com a Safelist do TikTok @viralup."
-      : `Fonte ${source} configurada. Complete a autorização quando necessário.`);
-  }
-
-  function pickFiles() {
-    inputRef.current?.click();
-  }
-
-  function saveEmbed() {
-    const raw = embedCode.trim();
-    if (!raw) return setStatus("Cole o código Embed do episódio.");
-
-    const match = raw.match(/src=["']([^"']+)["']/i);
-    if (!match?.[1]) return setStatus("Não encontrei o endereço do player dentro desse código Embed.");
-
-    const src = match[1].replace(/\s+/g, "");
-    if (!/^https:\/\/(www\.)?reelshort\.com\//i.test(src)) {
-      return setStatus("Esse Embed não parece ser um player oficial do ReelShort.");
-    }
-
-    const episode = Number(embedEpisode);
-    if (!episode || episode < 1) return setStatus("Informe um número de episódio válido.");
-
-    const next = [
-      ...embeds.filter((item) => item.episode !== episode),
-      { episode, title: `Episódio ${episode}`, src }
-    ].sort((a,b)=>a.episode-b.episode);
-
-    setEmbeds(next);
-    localStorage.setItem(EMBEDS_KEY, JSON.stringify(next));
-    setEmbedCode("");
-    setEmbedEpisode(episode + 1);
-    setStatus(`Episódio ${episode} salvo no player oficial.`);
-  }
-
-  function removeEmbed(episode) {
-    const next = embeds.filter((item)=>item.episode !== episode);
-    setEmbeds(next);
-    localStorage.setItem(EMBEDS_KEY, JSON.stringify(next));
-    setStatus(`Episódio ${episode} removido do player.`);
-  }
-
-  async function importVideoUrl(urlOverride) {
-    const url = (urlOverride ?? videoUrl).trim();
-    if (!url || importingUrl) return;
-    if (!configured) return setStatus("Configure a origem e a autorização antes de importar por link.");
-
-    setImportingUrl(true);
-    setStatus("Importando vídeo pelo link...");
-
+  async function refreshCredits(s = session) {
+    if (!s?.access_token) return;
     try {
-      const response = await fetch("/api/import-url", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url })
-      });
-      if (!response.ok) {
-        const error = await response.json().catch(() => ({}));
-        throw new Error(error.error || "Não foi possível importar esse link.");
-      }
-
-      const blob = await response.blob();
-      const disposition = response.headers.get("content-disposition") || "";
-      const nameMatch = disposition.match(/filename="?([^"]+)"?/i);
-      const fallbackName = `episodio-${linkEpisode}.mp4`;
-      const filename = nameMatch?.[1] || fallbackName;
-      const file = new File([blob], filename, { type: blob.type || "video/mp4" });
-
-      setVideoUrl("");
-      await runBatch([file], Math.max(Number(linkEpisode) - 1, 0));
-      setLinkEpisode((n) => Number(n) + 1);
-    } catch (error) {
-      setStatus(error.message);
-    } finally {
-      setImportingUrl(false);
-    }
+      const r = await fetch("/api/studio/credits", { headers: tokenHeaders(s) });
+      const data = await r.json();
+      if (r.ok && Number.isFinite(data.credits)) setCredits(data.credits);
+      if (r.status === 401) logout();
+    } catch {}
   }
 
-  async function installApp() {
-    if (!installPrompt) {
-      setStatus("No Android/Chrome, abra o menu do navegador e escolha “Adicionar à tela inicial” ou “Instalar app”.");
+  function logout() {
+    localStorage.removeItem(SESSION_KEY);
+    setSession(null);
+    setCredits(Number(localStorage.getItem(DEMO_CREDITS_KEY) || 120));
+  }
+
+  function saveDemoCredits(value) {
+    setCredits(value);
+    localStorage.setItem(DEMO_CREDITS_KEY, String(value));
+  }
+
+  function startPolling(project) {
+    if (!project?.providerRef || project.provider === "demo" || project.status === "completed") return;
+    if (pollers.current.has(project.id)) return;
+    const timer = setInterval(async () => {
+      try {
+        const q = new URLSearchParams({ provider: project.provider, ref: project.providerRef, model: project.model || "" });
+        const r = await fetch(`/api/studio/status?${q}`, { headers: tokenHeaders(session) });
+        const data = await r.json();
+        if (!r.ok) throw new Error(data.error || "Falha ao consultar processamento");
+        setProjects(prev => prev.map(p => p.id === project.id ? { ...p, ...data, updatedAt: new Date().toISOString() } : p));
+        if (data.status === "completed" || data.status === "failed") {
+          clearInterval(timer);
+          pollers.current.delete(project.id);
+          refreshCredits();
+        }
+      } catch (error) {
+        setProjects(prev => prev.map(p => p.id === project.id ? { ...p, status: "failed", error: error.message } : p));
+        clearInterval(timer);
+        pollers.current.delete(project.id);
+      }
+    }, 6000);
+    pollers.current.set(project.id, timer);
+  }
+
+  useEffect(() => {
+    projects.filter(p => ["queued", "processing"].includes(p.status)).forEach(startPolling);
+  }, [projects.length, session?.access_token]);
+
+  async function handleCheckout(pack) {
+    if (!session?.access_token) {
+      setAuthOpen(true);
       return;
     }
-    await installPrompt.prompt();
-    await installPrompt.userChoice.catch(() => null);
-    setInstallPrompt(null);
+    try {
+      const r = await fetch("/api/studio/billing", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...tokenHeaders(session) },
+        body: JSON.stringify({ pack })
+      });
+      const data = await r.json();
+      if (!r.ok) throw new Error(data.error || "Não foi possível abrir o pagamento");
+      if (data.checkoutUrl) window.location.href = data.checkoutUrl;
+    } catch (e) { alert(e.message); }
   }
 
-  function goTo(id) {
-    setActiveModule(id);
-    requestAnimationFrame(() => document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" }));
-  }
-
-  async function onFiles(event) {
-    const list = Array.from(event.target.files || []);
-    const valid = list.filter((file) => file.type.startsWith("video/") && file.size <= 25 * 1024 * 1024);
-    const rejected = list.length - valid.length;
-    setQueue(valid);
-    if (rejected) setStatus(`${rejected} arquivo(s) ignorado(s): formato inválido ou acima de 25 MB.`);
-    else setStatus(`${valid.length} vídeo(s) adicionados à fila.`);
-
-    if (valid.length && settings.autoMode && configured) await runBatch(valid);
-  }
-
-  async function runBatch(files = queue, startIndex = 0) {
-    if (!files.length) return setStatus("Adicione um ou mais vídeos.");
-    if (!configured) return setStatus("Preencha origem e autorização de uso antes de automatizar.");
-
-    setBusy(true);
-    let done = 0;
-
-    for (const [index, file] of files.entries()) {
-      const meta = buildMetadata(file, settings, index + startIndex);
-      setCurrent(file.name);
-      setStatus(`Processando ${index + 1} de ${files.length}: ${file.name}`);
-
-      try {
-        const data = new FormData();
-        data.append("video", file);
-        data.append("cta", settings.cta || "Siga a ViralUp");
-
-        const response = await fetch("/api/process", { method: "POST", body: data });
-        if (!response.ok) {
-          const error = await response.json().catch(() => ({}));
-          throw new Error(error.error || "Falha no processamento");
-        }
-
-        const blob = await response.blob();
-        const cover = await makeCover(blob, meta.title);
-        const item = {
-          id: crypto.randomUUID(),
-          ...meta,
-          source: resolvedSource,
-          sourceType: settings.source,
-          rightsType: settings.rightsType,
-          campaign: settings.campaign.trim(),
-          authorization: settings.authorization.trim(),
-          cta: meta.isLastFreeEpisode
-            ? "Quer continuar a história? Assista aos próximos episódios pelo link da bio."
-            : settings.cta.trim(),
-          totalEpisodes: Number(settings.totalEpisodes) || null,
-          freeEpisodes: Number(settings.freeEpisodes) || null,
-          promoLink: settings.promoLink?.trim() || "",
-          appPromoLink: settings.appPromoLink?.trim() || "",
-          contentReferralCode: settings.contentReferralCode?.trim() || "",
-          episodeStrategy: settings.episodeStrategy || "",
-          sourcePage: settings.sourcePage?.trim() || "",
-          episodeNumber: meta.episodeNumber,
-          funnelStage: meta.funnelStage,
-          isLastFreeEpisode: meta.isLastFreeEpisode,
-          originalName: file.name,
-          size: blob.size,
-          createdAt: Date.now(),
-          status: "ready",
-          blob,
-          cover
-        };
-
-        await saveVideo(item);
-        if (settings.autoDownload) await downloadPackage(item);
-        done++;
-      } catch (error) {
-        setStatus(`Erro em ${file.name}: ${error.message}`);
-      }
-    }
-
-    await refresh();
-    setQueue([]);
-    setCurrent("");
-    setBusy(false);
-    if (inputRef.current) inputRef.current.value = "";
-    setStatus(`${done} de ${files.length} vídeo(s) prontos com vídeo, capa, legenda e hashtags.`);
-  }
-
-  function openVideo(item) {
-    const url = URL.createObjectURL(item.blob);
-    window.open(url, "_blank");
-    setTimeout(() => URL.revokeObjectURL(url), 60000);
-  }
-
-  async function downloadPackage(item) {
-    const zip = new JSZip();
-    zip.file(`${item.filename}.mp4`, item.blob);
-    if (item.cover) zip.file(`${item.filename}-capa.jpg`, item.cover);
-    zip.file("legenda.txt", item.caption || "");
-    zip.file("dados.json", JSON.stringify({
-      title: item.title,
-      caption: item.caption,
-      hashtags: item.hashtags,
-      source: item.source,
-      sourceType: item.sourceType,
-      rightsType: item.rightsType,
-      campaign: item.campaign,
-      authorization: item.authorization,
-      cta: item.cta,
-      totalEpisodes: item.totalEpisodes,
-      freeEpisodes: item.freeEpisodes,
-      episodeNumber: item.episodeNumber,
-      promoLink: item.promoLink,
-      appPromoLink: item.appPromoLink,
-      contentReferralCode: item.contentReferralCode,
-      episodeStrategy: item.episodeStrategy,
-      sourcePage: item.sourcePage,
-      funnelStage: item.funnelStage,
-      isLastFreeEpisode: item.isLastFreeEpisode
-    }, null, 2));
-    const out = await zip.generateAsync({ type: "blob", compression: "DEFLATE" });
-    downloadBlob(out, `${item.filename}-pacote.zip`);
-  }
-
-  async function copyCaption(item) {
-    await navigator.clipboard.writeText(item.caption || "");
-    setStatus("Legenda e hashtags copiadas.");
-  }
-
-  function downloadVideoOnly(item) {
-    downloadBlob(item.blob, `${item.filename}.mp4`);
-    setStatus("Vídeo baixado. Agora abra o TikTok e selecione o arquivo.");
-  }
-
-  function openTikTok(item) {
-    const url = "https://www.tiktok.com/upload";
-    window.open(url, "_blank", "noopener,noreferrer");
-    setStatus(`TikTok aberto para publicar o Episódio ${item.episodeNumber || ""}. Use a legenda já preparada no ViralUp.`);
-  }
-
-  async function copyKwaiEpisodeData(item) {
-    const payload = [
-      `Título: ${kwaiEpisodeTitle || item.title || `Episódio ${item.episodeNumber || kwaiEpisodeNumber}`}`,
-      `Episódio: ${item.episodeNumber || kwaiEpisodeNumber}`,
-      `Legenda: ${item.caption || ""}`
-    ].join("\n");
-    await navigator.clipboard.writeText(payload);
-    setStatus("Dados do episódio copiados para o cadastro no Kwai.");
-  }
-
-  function openKwai() {
-    window.open("https://www.kwai.com/", "_blank", "noopener,noreferrer");
-    setStatus("Kwai aberto. Continue o cadastro do episódio na plataforma.");
-  }
-
-  async function removeItem(item) {
-    await deleteVideo(item.id);
-    await refresh();
-    setStatus("Vídeo removido.");
-  }
+  const providerCount = Object.values(config.providers || {}).filter(Boolean).length;
+  const nav = [
+    ["home", Zap, "Início"], ["create", Plus, "Criar"], ["projects", FolderClock, "Projetos"], ["credits", Coins, "Créditos"], ["settings", Settings2, "Ajustes"]
+  ];
 
   return (
-    <main className="shell">
-      <header className="topbar appTopbar">
-        <div className="brand">
-          <span className="brandIcon"><Play size={18} fill="currentColor"/></span>
-          <span>Viral<span className="up">Up</span></span>
+    <div className={styles.app}>
+      <header className={styles.header}>
+        <div className={styles.brandWrap}>
+          <div className={styles.logo}>V</div>
+          <div>
+            <strong>ViralUp Studio</strong>
+            <span>AI Creative Suite</span>
+          </div>
         </div>
-        <button className="installButton" type="button" onClick={installApp}>
-          <Smartphone size={16}/> Instalar
-        </button>
+        <div className={styles.headerActions}>
+          <button className={styles.creditPill} onClick={() => setTab("credits")}><Coins size={16}/> {credits}</button>
+          <button className={styles.userBtn} onClick={() => session ? logout() : setAuthOpen(true)} title={session ? "Sair" : "Entrar"}>
+            {session ? <LogOut size={18}/> : <LogIn size={18}/>}<span>{session?.user?.email?.split("@")[0] || "Entrar"}</span>
+          </button>
+        </div>
       </header>
 
-      <section className="hero appHero" id="inicio">
-        <div className="appStatus"><span className="statusDot"/> AUTO STUDIO ATIVO</div>
-        <div className="heroCompactRow">
-          <div>
-            <p className="eyebrow">VIRALUP STUDIO</p>
-            <h1>Conteúdo pronto, sem bagunça.</h1>
-          </div>
-          <span className="heroMiniStatus"><Zap size={14}/> Automação ativa</span>
-        </div>
-        <input ref={inputRef} hidden type="file" accept="video/*" multiple onChange={onFiles}/>
-      </section>
+      <main className={styles.main}>
+        {tab === "home" && <HomeView setTab={setTab} setTool={setTool} providerCount={providerCount} config={config}/>} 
+        {tab === "create" && <CreateView setTool={setTool}/>} 
+        {tab === "projects" && <ProjectsView projects={projects}/>} 
+        {tab === "credits" && <CreditsView credits={credits} session={session} billing={config.billing} onCheckout={handleCheckout} onDemoAdd={() => saveDemoCredits(credits + 100)}/>} 
+        {tab === "settings" && <SettingsView config={config} session={session}/>} 
+      </main>
 
-      <section className="moduleHub" aria-label="Blocos funcionais">
-        <div className="moduleHubHead">
-          <div>
-            <p className="eyebrow">CENTRAL DE TRABALHO</p>
-            <h2>Escolha o que você quer fazer</h2>
-          </div>
-          <span className="moduleHint">Cada função em seu próprio bloco</span>
-        </div>
-
-        <div className="moduleGrid">
-          <button type="button" onClick={()=>goTo("importar")} className={`moduleCard ${activeModule==="importar" ? "active" : ""}`}>
-            <span className="moduleIcon"><Download size={19}/></span>
-            <span><strong>1. Importar</strong><small>Link ou arquivo do aparelho</small></span>
-            <ChevronRight size={17}/>
+      <nav className={styles.nav}>
+        {nav.map(([id, Icon, label]) => (
+          <button key={id} className={tab === id ? styles.navActive : ""} onClick={() => setTab(id)}>
+            <Icon size={19}/><span>{label}</span>
           </button>
-          <button type="button" onClick={()=>goTo("episodios")} className={`moduleCard ${activeModule==="episodios" ? "active" : ""}`}>
-            <span className="moduleIcon"><Clapperboard size={19}/></span>
-            <span><strong>2. Episódios</strong><small>Embed e organização da série</small></span>
-            <ChevronRight size={17}/>
-          </button>
-          <button type="button" onClick={()=>goTo("automacao")} className={`moduleCard ${activeModule==="automacao" ? "active" : ""}`}>
-            <span className="moduleIcon"><Settings size={19}/></span>
-            <span><strong>3. Campanha</strong><small>Fonte, CTA e autorização</small></span>
-            <ChevronRight size={17}/>
-          </button>
-          <button type="button" onClick={()=>goTo("biblioteca")} className={`moduleCard ${activeModule==="biblioteca" ? "active" : ""}`}>
-            <span className="moduleIcon"><Library size={19}/></span>
-            <span><strong>4. Biblioteca</strong><small>Vídeos processados e pacotes</small></span>
-            <ChevronRight size={17}/>
-          </button>
-          <button type="button" onClick={()=>goTo("publicacao")} className={`moduleCard ${activeModule==="publicacao" ? "active" : ""}`}>
-            <span className="moduleIcon"><Send size={19}/></span>
-            <span><strong>5. Publicar</strong><small>TikTok e fluxo de postagem</small></span>
-            <ChevronRight size={17}/>
-          </button>
-          <button type="button" onClick={()=>goTo("contas")} className={`moduleCard ${activeModule==="contas" ? "active" : ""}`}>
-            <span className="moduleIcon"><UserCheck size={19}/></span>
-            <span><strong>6. Contas</strong><small>Safelist e autorizações</small></span>
-            <ChevronRight size={17}/>
-          </button>
-        </div>
-      </section>
-
-      <section className={`quickBlocks moduleView ${activeModule==="importar" ? "show" : ""}`} id="importar" aria-label="Ações principais">
-        <article className="quickBlock primaryQuick">
-          <div className="quickBlockTitle"><LinkIcon size={18}/><div><strong>Importar por link</strong><span>Link direto de vídeo autorizado</span></div></div>
-          <div className="urlImportRow">
-            <input
-              value={videoUrl}
-              onChange={(e)=>setVideoUrl(e.target.value)}
-              onPaste={(e)=>{
-                const pasted = e.clipboardData.getData("text");
-                if (/^https?:\/\//i.test(pasted.trim())) setTimeout(()=>importVideoUrl(pasted), 0);
-              }}
-              onKeyDown={(e)=>{ if(e.key === "Enter") importVideoUrl(); }}
-              placeholder="Cole o link direto do vídeo"
-              inputMode="url"
-            />
-            <input
-              className="episodeMiniInput"
-              type="number"
-              min="1"
-              value={linkEpisode}
-              onChange={(e)=>setLinkEpisode(e.target.value)}
-              title="Número do episódio"
-            />
-            <button type="button" onClick={()=>importVideoUrl()} disabled={importingUrl || !videoUrl.trim()}>
-              {importingUrl ? <span className="miniSpinner"/> : <Download size={17}/>}
-              {importingUrl ? "Importando" : "Importar"}
-            </button>
-          </div>
-          <small>Ao colar um link direto, a importação inicia automaticamente. Páginas comuns não são extraídas nem raspadas.</small>
-        </article>
-
-        <article className="quickBlock">
-          <div className="quickBlockTitle"><Upload size={18}/><div><strong>Arquivo do aparelho</strong><span>MP4, MOV, WebM • até 25 MB</span></div></div>
-          <button className="compactAction" type="button" onClick={pickFiles} disabled={busy}>
-            <Upload size={16}/> Selecionar vídeos
-          </button>
-        </article>
-
-        <article className="quickBlock">
-          <div className="quickBlockTitle"><Settings size={18}/><div><strong>Campanha</strong><span>{settings.campaign || settings.source}</span></div></div>
-          <button className="compactAction" type="button" onClick={()=>goTo("automacao")}>
-            <Settings size={16}/> Configurar
-          </button>
-        </article>
-      </section>
-
-      <section className="metrics compactMetrics">
-        <article><strong>{stats.imported}</strong><span>Importados</span></article>
-        <article><strong>{stats.processing}</strong><span>Processando</span></article>
-        <article><strong>{stats.ready}</strong><span>Prontos</span></article>
-      </section>
-
-      <section className={`section functionalSection moduleView ${activeModule==="contas" ? "show" : ""}`} id="contas">
-        <div className="sectionHeading">
-          <div><p className="eyebrow">CONTAS AUTORIZADAS</p><h2>Safelist e publicação</h2></div>
-          <span className="safeBadge ok"><UserCheck size={16}/> {accounts.length} conta cadastrada</span>
-        </div>
-
-        <div className="accountsGrid">
-          {accounts.map((account)=>(
-            <article className="accountCard" key={account.id}>
-              <div className="accountIcon"><UserCheck size={22}/></div>
-              <div className="accountInfo">
-                <div className="accountTopline">
-                  <strong>{account.platform} {account.account}</strong>
-                  <span className="pendingBadge">{account.status}</span>
-                </div>
-                <p><b>Fonte:</b> {account.source}</p>
-                <p><b>Situação:</b> {account.note}</p>
-                <small>Atualizado em {account.updatedAt}</small>
-              </div>
-            </article>
-          ))}
-        </div>
-      </section>
-
-      <section className={`section functionalSection moduleView ${activeModule==="automacao" ? "show" : ""}`} id="automacao">
-        <div className="sectionHeading">
-          <div><p className="eyebrow">MODO AUTOMÁTICO</p><h2>Padrão da campanha</h2></div>
-          <span className={configured ? "safeBadge ok" : "safeBadge"}><ShieldCheck size={16}/> {configured ? "Configurado" : "Falta autorização"}</span>
-        </div>
-
-        <div className="importPanel">
-          <div className="formGrid">
-            <label>
-              <span>Fonte de conteúdo</span>
-              <select value={settings.source} onChange={(e)=>applySourcePreset(e.target.value)}>
-                <option>ReelShort / RS Boost</option>
-                <option>NetShort</option>
-                <option>Upload próprio</option>
-                <option>Outro parceiro</option>
-              </select>
-            </label>
-            <label>
-              <span>Tipo de autorização</span>
-              <select value={settings.rightsType} onChange={(e)=>setSettings({...settings,rightsType:e.target.value})}>
-                <option>Campanha promocional autorizada</option>
-                <option>Licença de uso</option>
-                <option>Conteúdo próprio</option>
-                <option>Parceria / afiliado</option>
-                <option>Outro</option>
-              </select>
-            </label>
-            {settings.source === "Outro parceiro" && (
-              <label className="wide">
-                <span>Nome do parceiro</span>
-                <input value={settings.sourceCustom} onChange={(e)=>setSettings({...settings,sourceCustom:e.target.value})} placeholder="Ex.: plataforma ou estúdio parceiro"/>
-              </label>
-            )}
-            <label><span>Campanha</span><input value={settings.campaign} onChange={(e)=>setSettings({...settings,campaign:e.target.value})} placeholder="Nome ou código"/></label>
-            <label><span>CTA padrão</span><input value={settings.cta} onChange={(e)=>setSettings({...settings,cta:e.target.value})} placeholder="Siga a @viralup para mais episódios"/></label>
-            {settings.source === "ReelShort / RS Boost" && (
-              <>
-                <label><span>Total de episódios</span><input type="number" min="1" value={settings.totalEpisodes ?? ""} onChange={(e)=>setSettings({...settings,totalEpisodes:e.target.value})}/></label>
-                <label><span>Episódios liberados</span><input type="number" min="1" value={settings.freeEpisodes ?? ""} onChange={(e)=>setSettings({...settings,freeEpisodes:e.target.value})}/></label>
-                <label className="wide"><span>Link promocional do conteúdo</span><input value={settings.promoLink ?? ""} onChange={(e)=>setSettings({...settings,promoLink:e.target.value})} placeholder="https://..."/></label>
-                <label className="wide"><span>Link promocional do aplicativo</span><input value={settings.appPromoLink ?? ""} onChange={(e)=>setSettings({...settings,appPromoLink:e.target.value})} placeholder="https://..."/></label>
-                <label className="wide"><span>Código de indicação do conteúdo</span><input value={settings.contentReferralCode ?? ""} onChange={(e)=>setSettings({...settings,contentReferralCode:e.target.value})} placeholder="Código"/></label>
-                <div className="wide funnelCard">
-                  <strong>Funil automático</strong>
-                  <span>Episódios 1 a {settings.freeEpisodes || 0}: CTA para seguir @viralup. Episódio {settings.freeEpisodes || 0}: CTA muda automaticamente para continuar pelo link da bio.</span>
-                </div>
-              </>
-            )}
-            <label className="wide"><span>Autorização de uso</span><input value={settings.authorization} onChange={(e)=>setSettings({...settings,authorization:e.target.value})} placeholder="Link, código, e-mail ou observação da autorização"/></label>
-          </div>
-
-          {settings.source === "ReelShort / RS Boost" && (
-            <div className={`remoteSourcePanel modulePanel moduleView ${activeModule==="episodios" ? "show" : ""}`} id="episodios">
-              <div className="blockKicker">BLOCO 2 • EPISÓDIOS</div>
-              <div>
-                <strong>Player oficial ReelShort</strong>
-                <span>O episódio fica incorporado no ViralUp sem baixar o arquivo de vídeo.</span>
-              </div>
-              <div className="embedManager">
-                <div className="embedManagerHead">
-                  <div>
-                    <strong>Adicionar episódio por Embed</strong>
-                    <span>Copie o Embed no RS Boost e cole abaixo. O ViralUp extrai o player automaticamente.</span>
-                  </div>
-                </div>
-                <div className="embedManagerForm">
-                  <label>
-                    <span>Episódio</span>
-                    <input type="number" min="1" value={embedEpisode} onChange={(e)=>setEmbedEpisode(e.target.value)} />
-                  </label>
-                  <label className="embedCodeField">
-                    <span>Código Embed</span>
-                    <textarea
-                      value={embedCode}
-                      onChange={(e)=>setEmbedCode(e.target.value)}
-                      placeholder={'<iframe ... src="https://www.reelshort.com/..." ...></iframe>'}
-                    />
-                  </label>
-                  <button className="primaryButton" type="button" onClick={saveEmbed}>
-                    <Plus size={18}/> Adicionar episódio
-                  </button>
-                </div>
-              </div>
-
-              <div className="embedGrid">
-                {embeds.map((embed)=>(
-                  <article className="embedCard" key={embed.episode}>
-                    <div className="embedTitle">
-                      <strong>{embed.title}</strong>
-                      <div className="embedTitleActions">
-                        <span>OFICIAL</span>
-                        <button type="button" onClick={()=>removeEmbed(embed.episode)} title="Remover episódio"><Trash2 size={14}/></button>
-                      </div>
-                    </div>
-                    <div className="embedFrame">
-                      <iframe
-                        id={`reelshort_player_${embed.episode}`}
-                        src={embed.src}
-                        title={`ReelShort video player - Episódio ${embed.episode}`}
-                        frameBorder="0"
-                        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-                        referrerPolicy="strict-origin-when-cross-origin"
-                        allowFullScreen
-                      />
-                    </div>
-                  </article>
-                ))}
-              </div>
-
-              <div>
-                <strong>Episódios oficiais da campanha</strong>
-                <span>Sem baixar e sem copiar mídia: abra diretamente os episódios liberados no RS Boost.</span>
-              </div>
-              <div className="episodeButtons">
-                {Array.from({ length: Number(settings.freeEpisodes) || 0 }, (_, i) => i + 1).map((ep)=>(
-                  <button key={ep} type="button" onClick={()=>window.open(settings.sourcePage, "_blank", "noopener,noreferrer")}>
-                    <Play size={14}/> Ep. {ep}
-                  </button>
-                ))}
-              </div>
-              <a className="sourceLinkButton" href={settings.sourcePage} target="_blank" rel="noreferrer">
-                <ExternalLink size={16}/> Abrir campanha oficial no RS Boost
-              </a>
-              <small>O ViralUp não faz scraping nem baixa episódios automaticamente. O conteúdo continua sendo servido pela plataforma oficial.</small>
-            </div>
-          )}
-
-          <div className="toggles">
-            <label className="toggleRow">
-              <input type="checkbox" checked={settings.autoMode} onChange={(e)=>setSettings({...settings,autoMode:e.target.checked})}/>
-              <span><strong>Processar automaticamente</strong><small>Ao selecionar vídeos, iniciar a fila sem outro clique.</small></span>
-            </label>
-            <label className="toggleRow">
-              <input type="checkbox" checked={settings.autoDownload} onChange={(e)=>setSettings({...settings,autoDownload:e.target.checked})}/>
-              <span><strong>Baixar pacote automaticamente</strong><small>Baixa ZIP com vídeo, capa, legenda e dados.</small></span>
-            </label>
-          </div>
-
-          <div className="panelActions">
-            <button className="ghostButton" type="button" onClick={() => saveSettings()}><Settings size={18}/> Salvar padrão</button>
-            <button className="primaryButton" type="button" onClick={pickFiles} disabled={busy || !configured}><Zap size={18}/> Adicionar e automatizar</button>
-          </div>
-          {status && <p className="statusMessage">{status}</p>}
-          {busy && <div className="progressLine"><span className="pulse"/><strong>Processando:</strong> {current}</div>}
-        </div>
-      </section>
-
-      {queue.length > 0 && !busy && (
-        <section className="section">
-          <div className="queueBox">
-            <div><strong>{queue.length} vídeo(s) na fila</strong><span>{queue.map((f)=>f.name).join(" • ")}</span></div>
-            <button className="primaryButton" onClick={()=>runBatch()}><Clapperboard size={18}/> Processar fila</button>
-          </div>
-        </section>
-      )}
-
-      <section className={`section functionalSection moduleView ${activeModule==="biblioteca" ? "show" : ""}`} id="biblioteca">
-        <div className="sectionHeading"><div><p className="eyebrow">BIBLIOTECA</p><h2>Pacotes prontos para publicar</h2></div></div>
-
-        {library.length === 0 ? (
-          <div className="emptyLibrary"><Video size={34}/><strong>Nenhum pacote pronto ainda</strong><span>Configure o modo automático e selecione seus vídeos.</span></div>
-        ) : (
-          <div className="videoGrid">
-            {library.map((item)=>(
-              <article className="videoItem rich" key={item.id}>
-                <div className="coverThumb" onClick={()=>openVideo(item)}>
-                  {item.cover ? <img src={URL.createObjectURL(item.cover)} alt="" /> : <Play size={27} fill="currentColor"/>}
-                </div>
-                <div className="videoMeta">
-                  <div className="readyLine"><BadgeCheck size={15}/> PACOTE PRONTO</div>
-                  <h3>{item.title}</h3>
-                  <p className="captionPreview">{item.caption}</p>
-                  {item.isLastFreeEpisode && <span className="redirectBadge">ÚLTIMO GRATUITO • REDIRECIONAR</span>}
-                  <small>{mb(item.size)} • 1080×1920 • MP4 + capa + legenda</small>
-                </div>
-                <div className="itemActions">
-                  <button onClick={()=>openVideo(item)} title="Visualizar"><Play size={17}/></button>
-                  <button onClick={()=>copyCaption(item)} title="Copiar legenda"><Copy size={17}/></button>
-                  <button onClick={()=>item.cover && downloadBlob(item.cover,`${item.filename}-capa.jpg`)} title="Baixar capa"><ImageIcon size={17}/></button>
-                  <button onClick={()=>downloadVideoOnly(item)} title="Baixar vídeo"><Download size={17}/></button>
-                  <button onClick={()=>downloadPackage(item)} title="Baixar pacote ZIP"><Package size={17}/></button>
-                  <button onClick={()=>removeItem(item)} title="Excluir"><Trash2 size={17}/></button>
-                </div>
-                <div className="tiktokPublish">
-                  <div>
-                    <strong>Publicar no TikTok</strong>
-                    <span>Episódio {item.episodeNumber || "—"} • @viralup</span>
-                  </div>
-                  <div className="tiktokButtons">
-                    <button type="button" onClick={()=>copyCaption(item)}><Copy size={16}/> Copiar legenda</button>
-                    <button type="button" onClick={()=>downloadVideoOnly(item)}><Download size={16}/> Baixar vídeo</button>
-                    <button className="tiktokPrimary" type="button" onClick={()=>openTikTok(item)}><Send size={16}/> Abrir TikTok</button>
-                  </div>
-                </div>
-              </article>
-            ))}
-          </div>
-        )}
-      </section>
-
-      <section className={`functionalSection publishWorkspace moduleView ${activeModule==="publicacao" ? "show" : ""}`} id="publicacao">
-        <div className="sectionHeading publishHeading">
-          <div>
-            <p className="eyebrow">PUBLICAÇÃO</p>
-            <h2>TikTok e Kwai</h2>
-          </div>
-          <div className="publishTabs" role="tablist">
-            <button type="button" className={publishPlatform==="TikTok" ? "active" : ""} onClick={()=>setPublishPlatform("TikTok")}>TikTok</button>
-            <button type="button" className={publishPlatform==="Kwai" ? "active" : ""} onClick={()=>setPublishPlatform("Kwai")}>Kwai</button>
-          </div>
-        </div>
-
-        {publishPlatform === "TikTok" ? (
-          <div className="publishPlatformCard">
-            <div className="platformLead">
-              <Send size={20}/>
-              <div>
-                <strong>Publicar no TikTok</strong>
-                <span>Use os botões de cada vídeo da biblioteca para copiar legenda, baixar o vídeo e abrir a página de publicação.</span>
-              </div>
-            </div>
-            <button className="compactAction" type="button" onClick={()=>window.open("https://www.tiktok.com/upload","_blank","noopener,noreferrer")}>
-              <ExternalLink size={16}/> Abrir TikTok
-            </button>
-          </div>
-        ) : (
-          <div className="publishPlatformCard kwaiCard">
-            <div className="platformLead">
-              <Clapperboard size={20}/>
-              <div>
-                <strong>Cadastrar episódios no Kwai</strong>
-                <span>Fluxo separado para organizar título, número do episódio e os arquivos que serão enviados.</span>
-              </div>
-            </div>
-
-            <div className="kwaiForm">
-              <label>
-                <span>Título do episódio</span>
-                <input value={kwaiEpisodeTitle} onChange={(e)=>setKwaiEpisodeTitle(e.target.value)} placeholder="Ex.: Episódio 1" />
-              </label>
-              <label>
-                <span>Número</span>
-                <input type="number" min="1" value={kwaiEpisodeNumber} onChange={(e)=>setKwaiEpisodeNumber(e.target.value)} />
-              </label>
-            </div>
-
-            <div className="kwaiEpisodeList">
-              {library.length === 0 ? (
-                <div className="emptyLibrary compactEmpty"><Video size={26}/><strong>Nenhum vídeo pronto</strong><span>Importe ou processe um episódio primeiro.</span></div>
-              ) : (
-                library.slice(0,8).map((item)=>(
-                  <article className="kwaiEpisodeRow" key={item.id}>
-                    <div className="kwaiEpisodeInfo">
-                      <strong>{item.title}</strong>
-                      <span>Episódio {item.episodeNumber || "—"} • {mb(item.size)}</span>
-                    </div>
-                    <div className="kwaiEpisodeActions">
-                      <button type="button" onClick={()=>copyKwaiEpisodeData(item)}><Copy size={15}/> Dados</button>
-                      <button type="button" onClick={()=>downloadVideoOnly(item)}><Download size={15}/> Vídeo</button>
-                    </div>
-                  </article>
-                ))
-              )}
-            </div>
-
-            <div className="kwaiBottomActions">
-              <button className="ghostButton" type="button" onClick={()=>goTo("biblioteca")}><Library size={16}/> Biblioteca</button>
-              <button className="primaryButton" type="button" onClick={openKwai}><ExternalLink size={16}/> Abrir Kwai</button>
-            </div>
-          </div>
-        )}
-      </section>
-
-      <nav className="mobileNav" aria-label="Navegação principal">
-        <button type="button" onClick={()=>goTo("inicio")}><HomeIcon size={20}/><span>Início</span></button>
-        <button type="button" onClick={()=>goTo("biblioteca")}><Library size={20}/><span>Biblioteca</span></button>
-        <button className="navCreate" type="button" onClick={()=>goTo("importar")}><Plus size={25}/></button>
-        <button type="button" onClick={()=>goTo("automacao")}><Settings size={20}/><span>Automação</span></button>
-        <button type="button" onClick={()=>goTo("contas")}><UserCheck size={20}/><span>Contas</span></button>
+        ))}
       </nav>
 
-      <footer><span>ViralUp Studio</span><span>Conteúdo autorizado primeiro.</span></footer>
-    </main>
+      {tool && <ToolModal tool={tool} config={config} session={session} credits={credits} onClose={() => setTool(null)} onNeedAuth={() => setAuthOpen(true)} onCreated={(project, cost) => {
+        setProjects(prev => [project, ...prev]);
+        if (!session) saveDemoCredits(Math.max(0, credits - cost));
+        setTool(null);
+        setTab("projects");
+        startPolling(project);
+        refreshCredits();
+      }}/>} 
+      {authOpen && <AuthModal config={config} onClose={() => setAuthOpen(false)} onSession={(s) => {
+        setSession(s); persistJson(SESSION_KEY, s); setAuthOpen(false);
+      }}/>} 
+    </div>
   );
+}
+
+function HomeView({ setTab, setTool, providerCount, config }) {
+  return <>
+    <section className={styles.hero}>
+      <div className={styles.heroCopy}>
+        <span className={styles.kicker}><Sparkles size={14}/> NOVO STUDIO IA</span>
+        <h1>Transforme produtos em conteúdo que vende.</h1>
+        <p>Crie vídeos verticais, UGC, capas e anúncios com IA em um único painel otimizado para celular.</p>
+        <div className={styles.heroButtons}>
+          <button className={styles.primary} onClick={() => setTool(TOOLS[0])}><Play size={18}/> Criar vídeo</button>
+          <button className={styles.secondary} onClick={() => setTab("create")}><Wand2 size={18}/> Ver ferramentas</button>
+        </div>
+      </div>
+      <div className={styles.heroPanel}>
+        <div className={styles.phonePreview}>
+          <div className={styles.previewTop}><span>9:16</span><span>AI</span></div>
+          <div className={styles.previewCenter}><Film size={44}/><strong>Produto → Reel</strong><span>movimento · áudio · CTA</span></div>
+          <div className={styles.previewProgress}><i/></div>
+        </div>
+        <div className={styles.statusCard}>
+          <span className={styles.statusDot}/><div><b>{providerCount ? `${providerCount} provedores prontos` : "Modo demonstração"}</b><small>{config.providers?.gemini ? "Veo 3.1 disponível" : "Adicione as chaves no servidor"}</small></div>
+        </div>
+      </div>
+    </section>
+
+    <div className={styles.sectionTitle}><div><span>Ferramentas</span><h2>Comece por aqui</h2></div><button onClick={() => setTab("create")}>Ver todas <ChevronRight size={16}/></button></div>
+    <div className={styles.toolGrid}>{TOOLS.slice(0, 8).map(t => <ToolCard key={t.id} tool={t} onClick={() => setTool(t)}/>)}</div>
+
+    <section className={styles.pipelineBanner}>
+      <div className={styles.pipelineIcon}><PackageOpen size={28}/></div>
+      <div><span>SEU FLUXO ANTERIOR FOI PRESERVADO</span><h3>Pipeline ViralUp de episódios e pacotes</h3><p>Continue usando o sistema de edição, capas, ZIP e publicação que já existia.</p></div>
+      <a href="/pipeline">Abrir pipeline <ChevronRight size={17}/></a>
+    </section>
+  </>;
+}
+
+function CreateView({ setTool }) {
+  const groups = [
+    ["Criar com IA", TOOLS.slice(0,5)],
+    ["Editar e melhorar", TOOLS.slice(5,9)],
+    ["Áudio e idioma", TOOLS.slice(9)]
+  ];
+  return <>
+    <PageHead title="Criar" text="Escolha uma ferramenta e monte seu próximo conteúdo."/>
+    {groups.map(([name, items]) => <section key={name} className={styles.group}><h3>{name}</h3><div className={styles.toolGrid}>{items.map(t => <ToolCard key={t.id} tool={t} onClick={() => setTool(t)}/>)}</div></section>)}
+  </>;
+}
+
+function ToolCard({ tool, onClick }) {
+  const Icon = tool.icon;
+  return <button className={styles.toolCard} onClick={onClick}>
+    {tool.tag && <span className={styles.toolTag}>{tool.tag}</span>}
+    <span className={styles.toolIcon}><Icon size={22}/></span>
+    <strong>{tool.title}</strong><p>{tool.desc}</p>
+    <span className={styles.toolFooter}>{tool.cost} créditos <ChevronRight size={15}/></span>
+  </button>;
+}
+
+function ProjectsView({ projects }) {
+  return <>
+    <PageHead title="Projetos" text="Acompanhe gerações e resultados recentes."/>
+    {!projects.length ? <div className={styles.empty}><FolderClock size={34}/><strong>Nenhum projeto ainda</strong><p>Crie seu primeiro conteúdo no Studio.</p></div> : <div className={styles.projectList}>{projects.map(p => <ProjectCard key={p.id} project={p}/>)}</div>}
+  </>;
+}
+
+function ProjectCard({ project }) {
+  const done = project.status === "completed";
+  const failed = project.status === "failed";
+  return <article className={styles.projectCard}>
+    <div className={styles.projectThumb}>
+      {project.resultUrl && project.kind === "image" ? <img src={project.resultUrl} alt="resultado"/> : project.resultUrl && project.kind === "video" ? <video src={project.resultUrl} controls playsInline/> : <Film size={28}/>} 
+    </div>
+    <div className={styles.projectBody}>
+      <div className={styles.projectTop}><div><strong>{project.title}</strong><span>{project.providerLabel || project.provider} · {project.aspect || "9:16"}</span></div><span className={`${styles.state} ${done ? styles.done : failed ? styles.failed : styles.running}`}>{done ? "Concluído" : failed ? "Erro" : project.status === "queued" ? "Na fila" : "Processando"}</span></div>
+      {!done && !failed && <div className={styles.progress}><i style={{width: `${project.progress || 24}%`}}/></div>}
+      {project.error && <p className={styles.errorText}>{project.error}</p>}
+      <div className={styles.projectBottom}><small>{formatDate(project.createdAt)}</small>{project.resultUrl && <a href={project.resultUrl} target="_blank" rel="noreferrer"><Download size={15}/> Abrir resultado</a>}</div>
+    </div>
+  </article>;
+}
+
+function CreditsView({ credits, session, billing, onCheckout, onDemoAdd }) {
+  const packs = [
+    { id: "starter", credits: 120, price: "R$ 29,90", label: "Inicial" },
+    { id: "creator", credits: 350, price: "R$ 69,90", label: "Creator", popular: true },
+    { id: "pro", credits: 900, price: "R$ 149,90", label: "Pro" },
+  ];
+  return <>
+    <PageHead title="Créditos" text="Cada geração desconta apenas o recurso utilizado."/>
+    <div className={styles.balanceCard}><div><span>SALDO DISPONÍVEL</span><strong>{credits}</strong><small>créditos</small></div><Coins size={42}/></div>
+    <div className={styles.packGrid}>{packs.map(p => <button key={p.id} className={`${styles.packCard} ${p.popular ? styles.popular : ""}`} onClick={() => billing ? onCheckout(p.id) : !session ? onDemoAdd() : alert("Configure MERCADOPAGO_ACCESS_TOKEN no servidor para ativar pagamentos reais.")}>
+      {p.popular && <span>MAIS VANTAJOSO</span>}<b>{p.label}</b><strong>{p.credits} créditos</strong><small>{p.price}</small>
+    </button>)}</div>
+    <div className={styles.infoCard}><BadgeCheck size={20}/><div><b>{billing ? "Mercado Pago conectado" : "Pagamento em modo de configuração"}</b><p>{billing ? "O crédito é liberado após confirmação do pagamento." : "O fluxo está pronto; falta apenas cadastrar a credencial privada no ambiente do servidor."}</p></div></div>
+  </>;
+}
+
+function SettingsView({ config, session }) {
+  const providers = [
+    ["gemini", "Google Veo 3.1", "Vídeo principal"],
+    ["fal", "Kling 2.6 / fal.ai", "Vídeo alternativo"],
+    ["openai", "OpenAI GPT Image 2.5", "Capas e imagens"],
+    ["supabase", "Supabase", "Login, banco e créditos"],
+    ["mercadopago", "Mercado Pago", "Compra de créditos"],
+  ];
+  return <>
+    <PageHead title="Ajustes" text="Estado das integrações do seu Studio."/>
+    <div className={styles.settingCard}>
+      <div className={styles.settingHead}><strong>Modo atual</strong><span className={`${styles.state} ${config.mode === "live" ? styles.done : styles.running}`}>{config.mode === "live" ? "Produção" : "Demonstração"}</span></div>
+      <p>As chaves ficam somente no servidor. O aplicativo Android nunca recebe seus segredos.</p>
+    </div>
+    <div className={styles.settingCard}><strong>Integrações</strong><div className={styles.providerList}>{providers.map(([key, name, desc]) => {
+      const ok = key === "supabase" ? config.auth : key === "mercadopago" ? config.billing : config.providers?.[key];
+      return <div className={styles.providerRow} key={key}><span className={`${styles.providerDot} ${ok ? styles.providerOn : ""}`}/><div><b>{name}</b><small>{desc}</small></div><em>{ok ? "Conectado" : "Pendente"}</em></div>;
+    })}</div></div>
+    <div className={styles.settingCard}><strong>Conta</strong><p>{session?.user?.email || "Você está usando o modo local. Entre para sincronizar saldo e projetos no banco."}</p></div>
+    <a className={styles.legacyLink} href="/pipeline"><PackageOpen size={18}/> Abrir pipeline ViralUp anterior <ChevronRight size={17}/></a>
+  </>;
+}
+
+function PageHead({ title, text }) { return <div className={styles.pageHead}><h1>{title}</h1><p>{text}</p></div>; }
+
+function ToolModal({ tool, config, session, credits, onClose, onNeedAuth, onCreated }) {
+  const [prompt, setPrompt] = useState("");
+  const [aspect, setAspect] = useState("9:16");
+  const [quality, setQuality] = useState("720p");
+  const [duration, setDuration] = useState("8");
+  const [provider, setProvider] = useState("auto");
+  const [file, setFile] = useState(null);
+  const [preview, setPreview] = useState("");
+  const [busy, setBusy] = useState(false);
+  const fileRef = useRef(null);
+  const Icon = tool.icon;
+
+  useEffect(() => () => { if (preview?.startsWith("blob:")) URL.revokeObjectURL(preview); }, [preview]);
+
+  function chooseFile(f) {
+    if (!f) return;
+    if (f.size > 12 * 1024 * 1024) return alert("Use um arquivo de até 12 MB nesta versão.");
+    if (preview?.startsWith("blob:")) URL.revokeObjectURL(preview);
+    setFile(f); setPreview(URL.createObjectURL(f));
+  }
+
+  const videoTool = tool.kind === "video";
+  const realPossible = videoTool ? (config.providers?.gemini || config.providers?.fal) : config.providers?.openai;
+
+  async function generate() {
+    if (credits < tool.cost) return alert("Créditos insuficientes.");
+    if (!prompt.trim() && ["product-video","ai-video","ugc","avatar","thumbnail"].includes(tool.id)) return alert("Escreva uma instrução para a IA.");
+    setBusy(true);
+    try {
+      let inputDataUrl = null;
+      if (file) inputDataUrl = await readAsDataUrl(file);
+      const r = await fetch("/api/studio/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...tokenHeaders(session) },
+        body: JSON.stringify({ tool: tool.id, prompt, aspect, quality, duration, provider, inputDataUrl, inputMime: file?.type || null, kind: tool.kind })
+      });
+      const data = await r.json();
+      if (r.status === 401) { onNeedAuth(); throw new Error("Entre na conta para usar este saldo."); }
+      if (!r.ok) throw new Error(data.error || "Não foi possível iniciar a geração.");
+      const project = {
+        id: data.id || crypto.randomUUID(), title: tool.title, tool: tool.id, kind: tool.kind,
+        prompt, aspect, quality, duration, provider: data.provider || "demo", providerLabel: data.providerLabel,
+        providerRef: data.providerRef || null, model: data.model || "", status: data.status || "queued", progress: data.progress || 8,
+        resultUrl: data.resultUrl || null, createdAt: new Date().toISOString()
+      };
+      onCreated(project, tool.cost);
+    } catch (e) { alert(e.message); }
+    finally { setBusy(false); }
+  }
+
+  return <div className={styles.overlay} onMouseDown={e => e.target === e.currentTarget && onClose()}>
+    <div className={styles.modal}>
+      <div className={styles.modalHead}><div className={styles.modalTitle}><span><Icon size={22}/></span><div><small>CRIAR COM IA</small><strong>{tool.title}</strong></div></div><button onClick={onClose}><X size={20}/></button></div>
+      <div className={styles.modalBody}>
+        <button className={styles.uploadBox} onClick={() => fileRef.current?.click()}>
+          {preview ? (file?.type.startsWith("video/") ? <video src={preview} muted playsInline/> : <img src={preview} alt="prévia"/>) : <><Upload size={30}/><strong>Adicionar mídia</strong><span>{tool.accepts?.includes("image") ? "Foto ou arquivo compatível" : "Vídeo ou áudio"}</span></>}
+        </button>
+        <input ref={fileRef} hidden type="file" accept={tool.accepts} onChange={e => chooseFile(e.target.files?.[0])}/>
+        <label>Instrução para a IA</label>
+        <textarea value={prompt} onChange={e => setPrompt(e.target.value)} placeholder="Ex.: mantenha o produto fiel à foto, movimentos naturais de câmera, iluminação de loja premium, foco nos detalhes, anúncio vertical para Reels..."/>
+        <div className={styles.formGrid}>
+          <div><label>Formato</label><select value={aspect} onChange={e => setAspect(e.target.value)}><option>9:16</option><option>16:9</option><option>1:1</option></select></div>
+          <div><label>Duração</label><select value={duration} onChange={e => setDuration(e.target.value)}><option value="4">4 s</option><option value="5">5 s</option><option value="8">8 s</option><option value="10">10 s</option></select></div>
+          <div><label>Qualidade</label><select value={quality} onChange={e => setQuality(e.target.value)}><option value="720p">720p</option><option value="1080p">1080p</option><option value="4k">4K</option></select></div>
+          <div><label>Modelo</label><select value={provider} onChange={e => setProvider(e.target.value)}><option value="auto">Automático</option><option value="veo">Veo 3.1</option><option value="kling">Kling 2.6</option>{tool.kind === "image" && <option value="openai">GPT Image 2.5</option>}</select></div>
+        </div>
+        <div className={styles.modalNotice}><span className={`${styles.statusDot} ${realPossible ? styles.green : ""}`}/><div><b>{realPossible ? "Há provedor real configurado" : "Modo demonstração ativo"}</b><small>{realPossible ? "A solicitação será enviada pelo servidor sem expor a chave." : "O fluxo será simulado até configurar uma API."}</small></div></div>
+        <button className={styles.generateBtn} disabled={busy} onClick={generate}>{busy ? "Preparando..." : <><Sparkles size={18}/> Gerar agora · {tool.cost} créditos</>}</button>
+      </div>
+    </div>
+  </div>;
+}
+
+function AuthModal({ config, onClose, onSession }) {
+  const [mode, setMode] = useState("login");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  async function submit() {
+    if (!config.auth) return alert("Configure Supabase no servidor para ativar login real.");
+    setBusy(true);
+    try {
+      const r = await fetch("/api/studio/auth", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: mode, email, password }) });
+      const data = await r.json();
+      if (!r.ok) throw new Error(data.error || "Falha na autenticação");
+      if (mode === "signup" && !data.access_token) return alert("Cadastro criado. Confirme seu e-mail antes de entrar.");
+      onSession(data);
+    } catch (e) { alert(e.message); }
+    finally { setBusy(false); }
+  }
+
+  return <div className={styles.overlay} onMouseDown={e => e.target === e.currentTarget && onClose()}><div className={`${styles.modal} ${styles.authModal}`}>
+    <div className={styles.modalHead}><div className={styles.modalTitle}><span><UserRound size={22}/></span><div><small>CONTA VIRALUP</small><strong>{mode === "login" ? "Entrar" : "Criar conta"}</strong></div></div><button onClick={onClose}><X size={20}/></button></div>
+    <div className={styles.modalBody}>
+      <div className={styles.authSwitch}><button className={mode === "login" ? styles.switchActive : ""} onClick={() => setMode("login")}>Entrar</button><button className={mode === "signup" ? styles.switchActive : ""} onClick={() => setMode("signup")}>Cadastrar</button></div>
+      <label>E-mail</label><input value={email} onChange={e => setEmail(e.target.value)} type="email" placeholder="voce@email.com"/>
+      <label>Senha</label><input value={password} onChange={e => setPassword(e.target.value)} type="password" placeholder="mínimo 8 caracteres"/>
+      <button className={styles.generateBtn} onClick={submit} disabled={busy || !email || password.length < 8}>{busy ? "Aguarde..." : mode === "login" ? "Entrar na conta" : "Criar minha conta"}</button>
+      {!config.auth && <p className={styles.errorText}>Supabase ainda não está configurado no servidor.</p>}
+    </div>
+  </div></div>;
 }
