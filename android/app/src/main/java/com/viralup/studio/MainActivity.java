@@ -45,7 +45,7 @@ public class MainActivity extends Activity {
             }
         });
 
-        webView.loadUrl("https://viralup-app.onrender.com");
+        webView.loadUrl("https://viralup-app-1.onrender.com");
     }
 
     @Override
