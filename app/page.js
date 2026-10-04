@@ -303,7 +303,8 @@ function CreditsView({ credits, session, billing, onCheckout, onDemoAdd }) {
 function SettingsView({ config, session }) {
   const providers = [
     ["gemini", "Google Veo 3.1", "Vídeo principal"],
-    ["fal", "Kling 2.6 / fal.ai", "Vídeo alternativo"],
+    ["runway", "Runway Gen-4.5", "Vídeo alternativo independente"],
+    ["fal", "Kling 2.6 / fal.ai", "Vídeo de reserva"],
     ["openai", "OpenAI GPT Image 2.5", "Capas e imagens"],
     ["supabase", "Supabase", "Login, banco e créditos"],
     ["mercadopago", "Mercado Pago", "Compra de créditos"],
@@ -347,7 +348,7 @@ function ToolModal({ tool, config, session, credits, onClose, onNeedAuth, onCrea
   }
 
   const videoTool = tool.kind === "video";
-  const realPossible = videoTool ? (config.providers?.gemini || config.providers?.fal) : config.providers?.openai;
+  const realPossible = videoTool ? (config.providers?.gemini || config.providers?.runway || config.providers?.fal) : config.providers?.openai;
 
   async function generate() {
     if (credits < tool.cost) return alert("Créditos insuficientes.");
@@ -389,7 +390,7 @@ function ToolModal({ tool, config, session, credits, onClose, onNeedAuth, onCrea
           <div><label>Formato</label><select value={aspect} onChange={e => setAspect(e.target.value)}><option>9:16</option><option>16:9</option><option>1:1</option></select></div>
           <div><label>Duração</label><select value={duration} onChange={e => setDuration(e.target.value)}><option value="4">4 s</option><option value="5">5 s</option><option value="8">8 s</option><option value="10">10 s</option></select></div>
           <div><label>Qualidade</label><select value={quality} onChange={e => setQuality(e.target.value)}><option value="720p">720p</option><option value="1080p">1080p</option><option value="4k">4K</option></select></div>
-          <div><label>Modelo</label><select value={provider} onChange={e => setProvider(e.target.value)}><option value="auto">Automático</option><option value="veo">Veo 3.1</option><option value="kling">Kling 2.6</option>{tool.kind === "image" && <option value="openai">GPT Image 2.5</option>}</select></div>
+          <div><label>Modelo</label><select value={provider} onChange={e => setProvider(e.target.value)}><option value="auto">Automático</option><option value="veo">Veo 3.1</option><option value="runway">Runway Gen-4.5</option><option value="kling">Kling 2.6</option>{tool.kind === "image" && <option value="openai">GPT Image 2.5</option>}</select></div>
         </div>
         <div className={styles.modalNotice}><span className={`${styles.statusDot} ${realPossible ? styles.green : ""}`}/><div><b>{realPossible ? "Há provedor real configurado" : "Modo demonstração ativo"}</b><small>{realPossible ? "A solicitação será enviada pelo servidor sem expor a chave." : "O fluxo será simulado até configurar uma API."}</small></div></div>
         <button className={styles.generateBtn} disabled={busy} onClick={generate}>{busy ? "Preparando..." : <><Sparkles size={18}/> Gerar agora · {tool.cost} créditos</>}</button>

@@ -13,6 +13,7 @@ export async function GET(request) {
   if (!user) return jsonError("Sessão necessária.", 401);
   try {
     if (provider === "veo") return Response.json(await veoStatus(ref, user.id));
+    if (provider === "runway") return Response.json(await runwayStatus(ref, user.id));
     if (provider === "kling") return Response.json(await klingStatus(ref, model, user.id));
     return Response.json({ status: "completed", progress: 100 });
   } catch (e) { return jsonError(e.message || "Falha ao consultar geração.", 502); }
@@ -30,6 +31,30 @@ async function veoStatus(ref, userId) {
   const rawUrl = sample?.uri || sample?.url || null;
   const resultUrl = rawUrl ? await mirrorRemoteToStorage(`${userId}/${encodeURIComponent(ref).replace(/%/g, "-")}.mp4`, rawUrl, { "x-goog-api-key": process.env.GEMINI_API_KEY }) : null;
   return { status: "completed", progress: 100, resultUrl };
+}
+
+async function runwayStatus(ref, userId) {
+  const key = process.env.RUNWAYML_API_SECRET || process.env.RUNWAY_API_KEY;
+  if (!key) throw new Error("Runway não configurado.");
+  const res = await fetch(`https://api.dev.runwayml.com/v1/tasks/${encodeURIComponent(ref)}`, {
+    headers: {
+      Authorization: `Bearer ${key}`,
+      "X-Runway-Version": "2024-11-06",
+    },
+    cache: "no-store",
+  });
+  const data = await safeJson(res);
+  if (!res.ok) throw new Error(data?.error || data?.message || `Runway não retornou o status (${res.status}).`);
+  const s = String(data?.status || "").toUpperCase();
+  if (s === "SUCCEEDED") {
+    const rawUrl = Array.isArray(data?.output) ? data.output[0] : null;
+    const resultUrl = rawUrl ? await mirrorRemoteToStorage(`${userId}/runway-${ref}.mp4`, rawUrl) : null;
+    return { status: "completed", progress: 100, resultUrl };
+  }
+  if (["FAILED", "CANCELED", "CANCELLED"].includes(s)) {
+    return { status: "failed", progress: 100, error: data?.failure || data?.error || "A geração do Runway falhou." };
+  }
+  return { status: s === "PENDING" || s === "THROTTLED" ? "queued" : "processing", progress: s === "PENDING" ? 18 : 62 };
 }
 
 async function klingStatus(ref, model, userId) {

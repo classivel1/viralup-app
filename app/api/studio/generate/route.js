@@ -37,6 +37,12 @@ export async function POST(request) {
       await saveProject(user?.id, project);
       return Response.json({ id, provider: "veo", providerLabel: "Google Veo 3.1", providerRef: job.ref, model: job.model, status: "queued", progress: 10 });
     }
+    if (provider === "runway") {
+      const job = await createRunwayJob({ prompt, aspect, duration: body.duration, inputDataUrl });
+      const project = { id, tool, provider: "runway", providerRef: job.ref, status: "queued", prompt, aspect, quality, metadata: { model: job.model } };
+      await saveProject(user?.id, project);
+      return Response.json({ id, provider: "runway", providerLabel: "Runway Gen-4.5", providerRef: job.ref, model: job.model, status: "queued", progress: 10 });
+    }
     if (provider === "kling") {
       const job = await createKlingJob({ prompt, aspect, duration: body.duration, inputDataUrl });
       const project = { id, tool, provider: "kling", providerRef: job.ref, status: "queued", prompt, aspect, quality, metadata: { model: job.model } };
@@ -66,6 +72,12 @@ export async function POST(request) {
       message: rawMessage,
       code: error?.code || undefined,
     });
+    if (provider === "runway" && (status === 403 || /forbidden/i.test(rawMessage))) {
+      return jsonError("A Runway recusou o acesso (403). Verifique se a RUNWAYML_API_SECRET está válida e se a conta possui créditos disponíveis.", 502, { provider: "runway", upstreamStatus: 403 });
+    }
+    if (provider === "runway" && (status === 401 || /unauthorized|invalid.*key|authentication/i.test(rawMessage))) {
+      return jsonError("A chave da Runway foi recusada. Gere uma nova API secret e atualize RUNWAYML_API_SECRET no Render.", 502, { provider: "runway", upstreamStatus: 401 });
+    }
     if (provider === "kling" && (status === 403 || /forbidden/i.test(rawMessage))) {
       return jsonError("A fal.ai recusou o acesso ao Kling (403). Verifique se a FAL_KEY continua válida e se sua conta fal.ai possui créditos/saldo disponível.", 502, { provider: "kling", upstreamStatus: 403 });
     }
@@ -97,6 +109,38 @@ async function createVeoJob({ prompt, aspect, quality, duration, inputDataUrl })
   const data = await safeJson(res);
   if (!res.ok || !data.name) throw new Error(data?.error?.message || "Veo não aceitou a solicitação.");
   return { ref: data.name, model };
+}
+
+async function createRunwayJob({ prompt, aspect, duration, inputDataUrl }) {
+  const key = process.env.RUNWAYML_API_SECRET || process.env.RUNWAY_API_KEY;
+  const model = process.env.RUNWAY_MODEL || "gen4.5";
+  const n = Number(duration);
+  const seconds = Math.max(2, Math.min(10, Number.isFinite(n) ? Math.round(n) : 5));
+  const ratioMap = { "9:16": "720:1280", "16:9": "1280:720", "1:1": "960:960" };
+  const payload = {
+    model,
+    promptText: prompt || "Cinematic social media product video with natural camera movement.",
+    ratio: ratioMap[aspect] || "720:1280",
+    duration: seconds,
+  };
+  if (/^data:image\//.test(inputDataUrl || "")) payload.promptImage = inputDataUrl;
+  const res = await fetch("https://api.dev.runwayml.com/v1/image_to_video", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${key}`,
+      "Content-Type": "application/json",
+      "X-Runway-Version": "2024-11-06",
+    },
+    body: JSON.stringify(payload),
+    cache: "no-store",
+  });
+  const data = await safeJson(res);
+  if (!res.ok || !data?.id) {
+    const error = new Error(data?.error || data?.message || `Runway não aceitou a solicitação (${res.status}).`);
+    error.status = res.status;
+    throw error;
+  }
+  return { ref: data.id, model };
 }
 
 async function createKlingJob({ prompt, aspect, duration, inputDataUrl }) {
