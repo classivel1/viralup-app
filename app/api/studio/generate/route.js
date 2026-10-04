@@ -93,12 +93,13 @@ async function createVeoJob({ prompt, aspect, quality, duration, inputDataUrl })
   const model = process.env.VEO_MODEL || "veo-3.1-generate-preview";
   const inline = dataUrlToInline(inputDataUrl);
   const instance = { prompt: prompt || "Create a polished social media product video." };
-  if (inline?.mimeType?.startsWith("image/")) instance.image = { inlineData: inline };
+  if (inline?.mimeType?.startsWith("image/")) {
+    instance.image = { mimeType: inline.mimeType, bytesBase64Encoded: inline.data };
+  }
   const parameters = {
     aspectRatio: aspect === "1:1" ? "9:16" : aspect,
     durationSeconds: clampVeoDuration(duration),
     resolution: quality === "4k" ? "4k" : quality === "1080p" ? "1080p" : "720p",
-    numberOfVideos: 1,
   };
   const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:predictLongRunning`, {
     method: "POST",
