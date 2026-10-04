@@ -58,7 +58,21 @@ export async function POST(request) {
     return Response.json({ id, provider: "demo", providerLabel: "Demonstração", status: "completed", progress: 100, resultUrl: demoUrl, demo: true });
   } catch (error) {
     if (debited && user) await addCredits(user.id, cost).catch(() => {});
-    return jsonError(error?.message || "Falha ao iniciar geração.", 502);
+    const rawMessage = String(error?.message || error || "Falha ao iniciar geração.");
+    const status = Number(error?.status || error?.statusCode || error?.response?.status || 0);
+    console.error("[studio/generate]", {
+      provider,
+      status: status || undefined,
+      message: rawMessage,
+      code: error?.code || undefined,
+    });
+    if (provider === "kling" && (status === 403 || /forbidden/i.test(rawMessage))) {
+      return jsonError("A fal.ai recusou o acesso ao Kling (403). Verifique se a FAL_KEY continua válida e se sua conta fal.ai possui créditos/saldo disponível.", 502, { provider: "kling", upstreamStatus: 403 });
+    }
+    if (provider === "kling" && (status === 401 || /unauthorized|invalid.*key|authentication/i.test(rawMessage))) {
+      return jsonError("A FAL_KEY foi recusada pela fal.ai. Gere uma nova chave com escopo API e atualize FAL_KEY no Render.", 502, { provider: "kling", upstreamStatus: 401 });
+    }
+    return jsonError(rawMessage, 502);
   }
 }
 
