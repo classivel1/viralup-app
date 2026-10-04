@@ -72,6 +72,9 @@ export async function POST(request) {
       message: rawMessage,
       code: error?.code || undefined,
     });
+    if (provider === "runway" && /not enough credits|insufficient credits/i.test(rawMessage)) {
+      return jsonError("Sua conta da Runway está sem créditos suficientes para gerar este vídeo. Os 120 créditos do ViralUp são internos e não substituem os créditos cobrados pela Runway.", 402, { provider: "runway", upstreamStatus: status || 400 });
+    }
     if (provider === "runway" && (status === 403 || /forbidden/i.test(rawMessage))) {
       return jsonError("A Runway recusou o acesso (403). Verifique se a RUNWAYML_API_SECRET está válida e se a conta possui créditos disponíveis.", 502, { provider: "runway", upstreamStatus: 403 });
     }
