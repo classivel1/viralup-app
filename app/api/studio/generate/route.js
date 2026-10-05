@@ -1,28 +1,36 @@
 import { randomUUID } from "node:crypto";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
+import { readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import {
   COSTS, addCredits, chooseProvider, clampVeoDuration, consumeCredits, dataUrlToInline, ensureProfile,
-  getUserFromRequest, jsonError, resolutionForOpenAI, safeJson, saveProject, uploadDataUrlToStorage
+  getUserFromRequest, jsonError, resolutionForOpenAI, safeJson, safeText, saveProject, uploadBufferToStorage, uploadDataUrlToStorage
 } from "../../../../lib/studio";
 
 export const runtime = "nodejs";
-export const maxDuration = 60;
+export const maxDuration = 300;
+
+const execFileAsync = promisify(execFile);
 
 export async function POST(request) {
   const body = await request.json().catch(() => ({}));
   const tool = String(body.tool || "ai-video");
   const kind = body.kind === "image" ? "image" : body.kind === "audio" ? "audio" : "video";
-  const cost = COSTS[tool] || 4;
+  const toolCost = COSTS[tool] || 4;
   const prompt = String(body.prompt || "").trim().slice(0, 12000);
   const aspect = ["9:16", "16:9", "1:1"].includes(body.aspect) ? body.aspect : "9:16";
   const quality = ["720p", "1080p", "4k"].includes(body.quality) ? body.quality : "720p";
   const inputDataUrl = typeof body.inputDataUrl === "string" && body.inputDataUrl.length < 18_000_000 ? body.inputDataUrl : null;
   let provider = chooseProvider({ requested: body.provider, kind, hasInput: Boolean(inputDataUrl) });
+  const cost = ["pollinations", "ffmpeg"].includes(provider) ? 0 : toolCost;
   const user = await getUserFromRequest(request);
 
   if (provider !== "demo" && !user) return jsonError("Entre na sua conta para usar a geração real.", 401);
 
   let debited = false;
-  if (user && provider !== "demo") {
+  if (user && provider !== "demo" && cost > 0) {
     await ensureProfile(user);
     const debit = await consumeCredits(user.id, cost);
     if (!debit.ok) return jsonError(debit.unavailable ? "Banco de créditos indisponível." : "Créditos insuficientes.", debit.unavailable ? 503 : 402);
@@ -31,6 +39,30 @@ export async function POST(request) {
 
   const id = randomUUID();
   try {
+    if (provider === "pollinations") {
+      try {
+        const result = await createPollinationsVideo({ id, userId: user.id, prompt, aspect, duration: body.duration, inputDataUrl });
+        const project = { id, tool, provider: "pollinations", providerRef: null, status: "completed", prompt, aspect, quality, resultUrl: result.resultUrl, metadata: { model: result.model } };
+        await saveProject(user?.id, project);
+        return Response.json({ id, provider: "pollinations", providerLabel: "Pollinations", model: result.model, status: "completed", progress: 100, resultUrl: result.resultUrl, cost: 0 });
+      } catch (pollinationsError) {
+        console.warn("[studio/pollinations] fallback", String(pollinationsError?.message || pollinationsError));
+        if (inputDataUrl && process.env.FREE_VIDEO_FALLBACK !== "off") {
+          const local = await createLocalPhotoVideo({ id, userId: user.id, aspect, duration: body.duration, inputDataUrl });
+          const project = { id, tool, provider: "ffmpeg", providerRef: null, status: "completed", prompt, aspect, quality, resultUrl: local.resultUrl, metadata: { fallbackFrom: "pollinations", model: "ffmpeg-local" } };
+          await saveProject(user?.id, project);
+          return Response.json({ id, provider: "ffmpeg", providerLabel: "FFmpeg Local · fallback grátis", model: "ffmpeg-local", status: "completed", progress: 100, resultUrl: local.resultUrl, cost: 0, fallbackFrom: "pollinations" });
+        }
+        throw pollinationsError;
+      }
+    }
+    if (provider === "ffmpeg") {
+      if (!inputDataUrl) return jsonError("O modo FFmpeg Local precisa de uma foto de entrada.", 400);
+      const local = await createLocalPhotoVideo({ id, userId: user.id, aspect, duration: body.duration, inputDataUrl });
+      const project = { id, tool, provider: "ffmpeg", providerRef: null, status: "completed", prompt, aspect, quality, resultUrl: local.resultUrl, metadata: { model: "ffmpeg-local" } };
+      await saveProject(user?.id, project);
+      return Response.json({ id, provider: "ffmpeg", providerLabel: "FFmpeg Local · grátis", model: "ffmpeg-local", status: "completed", progress: 100, resultUrl: local.resultUrl, cost: 0 });
+    }
     if (provider === "veo") {
       const job = await createVeoJob({ prompt, aspect, quality, duration: body.duration, inputDataUrl });
       const project = { id, tool, provider: "veo", providerRef: job.ref, status: "queued", prompt, aspect, quality, metadata: { model: job.model } };
@@ -72,6 +104,9 @@ export async function POST(request) {
       message: rawMessage,
       code: error?.code || undefined,
     });
+    if (provider === "pollinations" && /credit|pollen|balance|quota|budget/i.test(rawMessage)) {
+      return jsonError("A Pollinations ficou sem Pollen/créditos disponíveis. Use FFmpeg Local para continuar sem custo externo.", 402, { provider: "pollinations" });
+    }
     if (provider === "runway" && /not enough credits|insufficient credits/i.test(rawMessage)) {
       return jsonError("Sua conta da Runway está sem créditos suficientes para gerar este vídeo. Os 120 créditos do ViralUp são internos e não substituem os créditos cobrados pela Runway.", 402, { provider: "runway", upstreamStatus: status || 400 });
     }
@@ -88,6 +123,99 @@ export async function POST(request) {
       return jsonError("A FAL_KEY foi recusada pela fal.ai. Gere uma nova chave com escopo API e atualize FAL_KEY no Render.", 502, { provider: "kling", upstreamStatus: 401 });
     }
     return jsonError(rawMessage, 502);
+  }
+}
+
+
+async function createPollinationsVideo({ id, userId, prompt, aspect, duration, inputDataUrl }) {
+  const key = process.env.POLLINATIONS_API_KEY;
+  if (!key) throw new Error("Pollinations não configurado.");
+  const model = process.env.POLLINATIONS_VIDEO_MODEL || "alibaba/wan-2.2-fast";
+  const seconds = Math.max(4, Math.min(10, Number(duration) || 5));
+  let referenceUrl = null;
+
+  if (/^data:image\//.test(inputDataUrl || "")) {
+    const inline = dataUrlToInline(inputDataUrl);
+    const ext = inline?.mimeType === "image/png" ? "png" : inline?.mimeType === "image/webp" ? "webp" : "jpg";
+    referenceUrl = await uploadDataUrlToStorage(`${userId}/pollinations-input-${id}.${ext}`, inputDataUrl);
+  }
+
+  const qs = new URLSearchParams({
+    model,
+    duration: String(seconds),
+    aspectRatio: aspect,
+  });
+  if (referenceUrl) qs.append("image[0]", referenceUrl);
+
+  const url = `https://gen.pollinations.ai/video/${encodeURIComponent(prompt || "Natural cinematic motion from the reference image")}?${qs.toString()}`;
+  const res = await fetch(url, {
+    headers: { Authorization: `Bearer ${key}` },
+    cache: "no-store",
+  });
+
+  if (!res.ok) {
+    const message = await safeText(res);
+    const error = new Error(message || `Pollinations recusou a geração (${res.status}).`);
+    error.status = res.status;
+    throw error;
+  }
+
+  const contentType = res.headers.get("content-type") || "video/mp4";
+  if (contentType.includes("application/json")) {
+    const data = await res.json();
+    const remoteUrl = data?.data?.[0]?.url || data?.url;
+    const b64 = data?.data?.[0]?.b64_json || data?.b64_json;
+    if (b64) {
+      const resultUrl = await uploadBufferToStorage(`${userId}/pollinations-${id}.mp4`, Buffer.from(b64, "base64"), "video/mp4");
+      return { resultUrl, model };
+    }
+    if (remoteUrl) {
+      const remote = await fetch(remoteUrl, { cache: "no-store" });
+      if (!remote.ok) throw new Error("Pollinations gerou o vídeo, mas o arquivo não pôde ser baixado.");
+      const bytes = Buffer.from(await remote.arrayBuffer());
+      const resultUrl = await uploadBufferToStorage(`${userId}/pollinations-${id}.mp4`, bytes, remote.headers.get("content-type") || "video/mp4");
+      return { resultUrl, model };
+    }
+    throw new Error("Pollinations não retornou um vídeo utilizável.");
+  }
+
+  const bytes = Buffer.from(await res.arrayBuffer());
+  if (!bytes.length) throw new Error("Pollinations retornou um vídeo vazio.");
+  const resultUrl = await uploadBufferToStorage(`${userId}/pollinations-${id}.mp4`, bytes, contentType);
+  return { resultUrl, model };
+}
+
+async function createLocalPhotoVideo({ id, userId, aspect, duration, inputDataUrl }) {
+  const inline = dataUrlToInline(inputDataUrl);
+  if (!inline?.mimeType?.startsWith("image/")) throw new Error("FFmpeg Local precisa de uma imagem válida.");
+
+  const seconds = Math.max(4, Math.min(10, Number(duration) || 5));
+  const dims = aspect === "16:9" ? [1280, 720] : aspect === "1:1" ? [720, 720] : [720, 1280];
+  const [w, h] = dims;
+  const frames = seconds * 30;
+  const token = randomUUID();
+  const inputExt = inline.mimeType === "image/png" ? "png" : inline.mimeType === "image/webp" ? "webp" : "jpg";
+  const inputPath = join(tmpdir(), `viralup-${token}.${inputExt}`);
+  const outputPath = join(tmpdir(), `viralup-${token}.mp4`);
+
+  try {
+    await writeFile(inputPath, Buffer.from(inline.data, "base64"));
+    const filter = `scale=${w}:${h}:force_original_aspect_ratio=increase,crop=${w}:${h},zoompan=z='min(zoom+0.0008,1.08)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=${frames}:s=${w}x${h}:fps=30,format=yuv420p`;
+    await execFileAsync("ffmpeg", [
+      "-y", "-loop", "1", "-i", inputPath,
+      "-t", String(seconds),
+      "-vf", filter,
+      "-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
+      "-pix_fmt", "yuv420p", "-movflags", "+faststart",
+      outputPath,
+    ], { maxBuffer: 8 * 1024 * 1024 });
+
+    const bytes = await readFile(outputPath);
+    const resultUrl = await uploadBufferToStorage(`${userId}/local-${id}.mp4`, bytes, "video/mp4");
+    if (!resultUrl) throw new Error("Supabase Storage indisponível para salvar o vídeo local.");
+    return { resultUrl };
+  } finally {
+    await Promise.allSettled([rm(inputPath, { force: true }), rm(outputPath, { force: true })]);
   }
 }
 
