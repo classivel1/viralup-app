@@ -271,13 +271,18 @@ function ProjectsView({ projects }) {
 function ProjectCard({ project }) {
   const done = project.status === "completed";
   const failed = project.status === "failed";
+  const pct = done ? 100 : failed ? 100 : Math.max(1, Math.min(99, Number(project.progress) || 8));
+  const stage = done ? "Concluído" : failed ? "Falhou" : pct < 15 ? "Preparando tarefa" : pct < 30 ? "Enviando para o modelo" : pct < 75 ? "IA gerando o vídeo" : pct < 95 ? "Finalizando render" : "Salvando resultado";
   return <article className={styles.projectCard}>
     <div className={styles.projectThumb}>
       {project.resultUrl && project.kind === "image" ? <img src={project.resultUrl} alt="resultado"/> : project.resultUrl && project.kind === "video" ? <video src={project.resultUrl} controls playsInline/> : <Film size={28}/>} 
     </div>
     <div className={styles.projectBody}>
       <div className={styles.projectTop}><div><strong>{project.title}</strong><span>{project.providerLabel || project.provider} · {project.aspect || "9:16"}</span></div><span className={`${styles.state} ${done ? styles.done : failed ? styles.failed : styles.running}`}>{done ? "Concluído" : failed ? "Erro" : project.status === "queued" ? "Na fila" : "Processando"}</span></div>
-      {!done && !failed && <div className={styles.progress}><i style={{width: `${project.progress || 24}%`}}/></div>}
+      {!failed && <div className={styles.projectProgressWrap}>
+        <div className={styles.projectProgressMeta}><span>{stage}</span><strong>{pct}%</strong></div>
+        <div className={styles.progress}><i style={{width: `${pct}%`}}/></div>
+      </div>}
       {project.error && <p className={styles.errorText}>{project.error}</p>}
       <div className={styles.projectBottom}><small>{formatDate(project.createdAt)}</small>{project.resultUrl && <a href={project.resultUrl} target="_blank" rel="noreferrer"><Download size={15}/> Abrir resultado</a>}</div>
     </div>
@@ -337,10 +342,16 @@ function ToolModal({ tool, config, session, credits, onClose, onNeedAuth, onCrea
   const [file, setFile] = useState(null);
   const [preview, setPreview] = useState("");
   const [busy, setBusy] = useState(false);
+  const [loadingProgress, setLoadingProgress] = useState(0);
+  const [loadingStage, setLoadingStage] = useState("");
+  const progressTimer = useRef(null);
   const fileRef = useRef(null);
   const Icon = tool.icon;
 
-  useEffect(() => () => { if (preview?.startsWith("blob:")) URL.revokeObjectURL(preview); }, [preview]);
+  useEffect(() => () => {
+    if (preview?.startsWith("blob:")) URL.revokeObjectURL(preview);
+    if (progressTimer.current) clearInterval(progressTimer.current);
+  }, [preview]);
 
   function chooseFile(f) {
     if (!f) return;
@@ -362,15 +373,41 @@ function ToolModal({ tool, config, session, credits, onClose, onNeedAuth, onCrea
     if (credits < generationCost) return alert("Créditos insuficientes.");
     if (!prompt.trim() && ["product-video","ai-video","ugc","avatar","thumbnail"].includes(tool.id)) return alert("Escreva uma instrução para a IA.");
     setBusy(true);
+    setLoadingProgress(4);
+    setLoadingStage("Preparando sua tarefa");
+    if (progressTimer.current) clearInterval(progressTimer.current);
     try {
       let inputDataUrl = null;
-      if (file) inputDataUrl = await readAsDataUrl(file);
+      if (file) {
+        setLoadingProgress(10);
+        setLoadingStage("Carregando a mídia");
+        inputDataUrl = await readAsDataUrl(file);
+      }
+      setLoadingProgress(22);
+      const selectedProvider = provider === "auto"
+        ? (config.providers?.pollinations ? "Pollinations" : config.providers?.ffmpeg && file ? "FFmpeg Local" : config.providers?.runway ? "Runway" : config.providers?.gemini ? "Veo" : config.providers?.fal ? "Kling" : "modelo")
+        : provider === "pollinations" ? "Pollinations"
+        : provider === "ffmpeg" ? "FFmpeg Local"
+        : provider === "runway" ? "Runway"
+        : provider === "veo" ? "Veo"
+        : provider === "kling" ? "Kling" : "modelo";
+      setLoadingStage(`Enviando para ${selectedProvider}`);
+      progressTimer.current = setInterval(() => {
+        setLoadingProgress(current => {
+          if (current >= 92) return current;
+          if (current < 40) return current + 3;
+          if (current < 70) return current + 2;
+          return current + 1;
+        });
+      }, 1100);
+      setTimeout(() => setLoadingStage(`Gerando com ${selectedProvider}`), 1600);
       const r = await fetch("/api/studio/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json", ...tokenHeaders(session) },
         body: JSON.stringify({ tool: tool.id, prompt, aspect, quality, duration, provider, inputDataUrl, inputMime: file?.type || null, kind: tool.kind })
       });
       const data = await r.json();
+      if (progressTimer.current) { clearInterval(progressTimer.current); progressTimer.current = null; }
       if (r.status === 401) { onNeedAuth(); throw new Error("Entre na conta para usar este saldo."); }
       if (!r.ok) throw new Error(data.error || "Não foi possível iniciar a geração.");
       const project = {
@@ -379,9 +416,22 @@ function ToolModal({ tool, config, session, credits, onClose, onNeedAuth, onCrea
         providerRef: data.providerRef || null, model: data.model || "", status: data.status || "queued", progress: data.progress || 8,
         resultUrl: data.resultUrl || null, createdAt: new Date().toISOString()
       };
+      setLoadingProgress(96);
+      setLoadingStage(data.status === "completed" ? "Finalizando e salvando o vídeo" : "Tarefa criada · acompanhando processamento");
+      await new Promise(resolve => setTimeout(resolve, 450));
+      setLoadingProgress(100);
+      setLoadingStage(data.status === "completed" ? "Concluído" : "Enviado para processamento");
+      await new Promise(resolve => setTimeout(resolve, 350));
       onCreated(project, Number.isFinite(data.cost) ? data.cost : generationCost);
-    } catch (e) { alert(e.message); }
-    finally { setBusy(false); }
+    } catch (e) {
+      if (progressTimer.current) { clearInterval(progressTimer.current); progressTimer.current = null; }
+      setLoadingStage("Não foi possível concluir");
+      alert(e.message);
+    }
+    finally {
+      if (progressTimer.current) { clearInterval(progressTimer.current); progressTimer.current = null; }
+      setBusy(false);
+    }
   }
 
   return <div className={styles.overlay} onMouseDown={e => e.target === e.currentTarget && onClose()}>
@@ -401,7 +451,20 @@ function ToolModal({ tool, config, session, credits, onClose, onNeedAuth, onCrea
           <div><label>Modelo</label><select value={provider} onChange={e => setProvider(e.target.value)}><option value="auto">{config.providers?.pollinations ? "Automático (Pollinations primeiro)" : config.providers?.ffmpeg ? "Automático (grátis primeiro)" : "Automático"}</option><option value="pollinations">Pollinations</option><option value="ffmpeg">FFmpeg Local · grátis</option><option value="runway">Runway Gen-4.5</option><option value="veo">Veo 3.1</option><option value="kling">Kling 2.6</option>{tool.kind === "image" && <option value="openai">GPT Image 2.5</option>}</select></div>
         </div>
         <div className={styles.modalNotice}><span className={`${styles.statusDot} ${realPossible ? styles.green : ""}`}/><div><b>{realPossible ? "Há provedor real configurado" : "Modo demonstração ativo"}</b><small>{realPossible ? "A solicitação será enviada pelo servidor sem expor a chave." : "O fluxo será simulado até configurar uma API."}</small></div></div>
-        <button className={styles.generateBtn} disabled={busy} onClick={generate}>{busy ? "Preparando..." : <><Sparkles size={18}/> {generationCost === 0 ? "Gerar agora · grátis" : `Gerar agora · ${generationCost} créditos`}</>}</button>
+        {busy && <div className={styles.generationLoader}>
+          <div className={styles.loaderTop}>
+            <div className={styles.loaderIdentity}><span className={styles.spinner}/><div><strong>{loadingStage || "Preparando"}</strong><small>Não feche esta tela enquanto a tarefa é enviada.</small></div></div>
+            <b>{loadingProgress}%</b>
+          </div>
+          <div className={styles.loaderTrack}><i style={{width: `${loadingProgress}%`}}/></div>
+          <div className={styles.loaderSteps}>
+            <span className={loadingProgress >= 10 ? styles.loaderStepOn : ""}>Mídia</span>
+            <span className={loadingProgress >= 22 ? styles.loaderStepOn : ""}>Envio</span>
+            <span className={loadingProgress >= 40 ? styles.loaderStepOn : ""}>Geração</span>
+            <span className={loadingProgress >= 90 ? styles.loaderStepOn : ""}>Finalização</span>
+          </div>
+        </div>}
+        <button className={styles.generateBtn} disabled={busy} onClick={generate}>{busy ? <>{loadingProgress}% · {loadingStage || "Processando"}</> : <><Sparkles size={18}/> {generationCost === 0 ? "Gerar agora · grátis" : `Gerar agora · ${generationCost} créditos`}</>}</button>
       </div>
     </div>
   </div>;
