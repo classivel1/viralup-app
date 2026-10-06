@@ -11,7 +11,7 @@ RUN npm run build
 
 FROM node:20-alpine AS runner
 WORKDIR /app
-RUN apk add --no-cache ffmpeg fontconfig ttf-dejavu
+RUN apk add --no-cache ffmpeg espeak-ng fontconfig ttf-dejavu
 ENV NODE_ENV=production
 COPY --from=builder /app/package.json ./package.json
 COPY --from=builder /app/node_modules ./node_modules
