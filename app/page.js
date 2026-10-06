@@ -224,7 +224,7 @@ function HomeView({ setTab, setTool, providerCount, config }) {
           <div className={styles.previewProgress}><i/></div>
         </div>
         <div className={styles.statusCard}>
-          <span className={styles.statusDot}/><div><b>{providerCount ? `${providerCount} provedores prontos` : "Modo demonstração"}</b><small>{config.providers?.gemini ? "Veo 3.1 disponível" : "Adicione as chaves no servidor"}</small></div>
+          <span className={styles.statusDot}/><div><b>{config.providers?.free ? "NewViral Free pronto" : providerCount ? `${providerCount} provedores prontos` : "Modo demonstração"}</b><small>{config.providers?.free ? "Sem chave, sem API e sem créditos" : config.providers?.gemini ? "Veo 3.1 disponível" : "Integrações avançadas são opcionais"}</small></div>
         </div>
       </div>
     </section>
@@ -445,7 +445,7 @@ function ToolModal({ tool, config, session, credits, onClose, onNeedAuth, onCrea
 
   return <div className={styles.overlay} onMouseDown={e => e.target === e.currentTarget && onClose()}>
     <div className={styles.modal}>
-      <div className={styles.modalHead}><div className={styles.modalTitle}><span><Icon size={22}/></span><div><small>CRIAR COM IA</small><strong>{tool.title}</strong></div></div><button onClick={onClose}><X size={20}/></button></div>
+      <div className={styles.modalHead}><div className={styles.modalTitle}><span><Icon size={22}/></span><div><small>{isFreeTool ? "CRIAR SEM API" : "CRIAR COM IA"}</small><strong>{tool.title}</strong></div></div><button onClick={onClose}><X size={20}/></button></div>
       <div className={styles.modalBody}>
         <button className={styles.uploadBox} onClick={() => fileRef.current?.click()}>
           {preview ? (file?.type.startsWith("video/") ? <video src={preview} muted playsInline/> : <img src={preview} alt="prévia"/>) : <><Upload size={30}/><strong>Adicionar mídia</strong><span>{tool.accepts?.includes("image") ? "Foto ou arquivo compatível" : "Vídeo ou áudio"}</span></>}

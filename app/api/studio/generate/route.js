@@ -280,9 +280,9 @@ async function createLocalPhotoVideo({ id, userId, aspect, duration, inputDataUr
     const base = `scale=${w}:${h}:force_original_aspect_ratio=decrease,pad=${w}:${h}:(ow-iw)/2:(oh-ih)/2:color=0x101114,zoompan=z='min(zoom+0.0006,1.06)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=${frames}:s=${w}x${h}:fps=30`;
     const overlay = font ? [
       `drawbox=x=0:y=${boxY}:w=${w}:h=${boxH}:color=black@0.58:t=fill`,
-      `drawtext=fontfile=${font}:textfile=${titlePath}:fontcolor=white:fontsize=${titleSize}:x=(w-text_w)/2:y=${titleY}`,
-      priceText ? `drawtext=fontfile=${font}:textfile=${pricePath}:fontcolor=white:fontsize=${priceSize}:x=(w-text_w)/2:y=${priceY}` : null,
-      `drawtext=fontfile=${font}:textfile=${ctaPath}:fontcolor=white:fontsize=${ctaSize}:x=(w-text_w)/2:y=${ctaY}`,
+      `drawtext=fontfile=${font}:textfile=${titlePath}:fontcolor=white:fontsize=${titleSize}:x=(w-text_w)/2:y=${titleY}:expansion=none`,
+      priceText ? `drawtext=fontfile=${font}:textfile=${pricePath}:fontcolor=white:fontsize=${priceSize}:x=(w-text_w)/2:y=${priceY}:expansion=none` : null,
+      `drawtext=fontfile=${font}:textfile=${ctaPath}:fontcolor=white:fontsize=${ctaSize}:x=(w-text_w)/2:y=${ctaY}:expansion=none`,
       "format=yuv420p"
     ].filter(Boolean).join(",") : "format=yuv420p";
 
