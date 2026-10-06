@@ -27,7 +27,7 @@ export async function POST(request) {
   const cost = ["pollinations", "ffmpeg"].includes(provider) ? 0 : toolCost;
   const user = await getUserFromRequest(request);
 
-  if (provider !== "demo" && !user) return jsonError("Entre na sua conta para usar a geração real.", 401);
+  if (provider !== "demo" && provider !== "ffmpeg" && !user) return jsonError("Entre na sua conta para usar a geração real.", 401);
 
   let debited = false;
   if (user && provider !== "demo" && cost > 0) {
@@ -48,7 +48,7 @@ export async function POST(request) {
       } catch (pollinationsError) {
         console.warn("[studio/pollinations] fallback", String(pollinationsError?.message || pollinationsError));
         if (inputDataUrl && process.env.FREE_VIDEO_FALLBACK !== "off") {
-          const local = await createLocalPhotoVideo({ id, userId: user.id, aspect, duration: body.duration, inputDataUrl });
+          const local = await createLocalPhotoVideo({ id, userId: user?.id, aspect, duration: body.duration, inputDataUrl, prompt, productName: body.productName, price: body.price, cta: body.cta, style: body.style, voice: body.voice });
           const project = { id, tool, provider: "ffmpeg", providerRef: null, status: "completed", prompt, aspect, quality, resultUrl: local.resultUrl, metadata: { fallbackFrom: "pollinations", model: "ffmpeg-local" } };
           await saveProject(user?.id, project);
           return Response.json({ id, provider: "ffmpeg", providerLabel: "FFmpeg Local · fallback grátis", model: "ffmpeg-local", status: "completed", progress: 100, resultUrl: local.resultUrl, cost: 0, fallbackFrom: "pollinations" });
@@ -58,7 +58,7 @@ export async function POST(request) {
     }
     if (provider === "ffmpeg") {
       if (!inputDataUrl) return jsonError("O modo FFmpeg Local precisa de uma foto de entrada.", 400);
-      const local = await createLocalPhotoVideo({ id, userId: user.id, aspect, duration: body.duration, inputDataUrl });
+      const local = await createLocalPhotoVideo({ id, userId: user?.id, aspect, duration: body.duration, inputDataUrl, prompt, productName: body.productName, price: body.price, cta: body.cta, style: body.style, voice: body.voice });
       const project = { id, tool, provider: "ffmpeg", providerRef: null, status: "completed", prompt, aspect, quality, resultUrl: local.resultUrl, metadata: { model: "ffmpeg-local" } };
       await saveProject(user?.id, project);
       return Response.json({ id, provider: "ffmpeg", providerLabel: "FFmpeg Local · grátis", model: "ffmpeg-local", status: "completed", progress: 100, resultUrl: local.resultUrl, cost: 0 });
@@ -185,37 +185,99 @@ async function createPollinationsVideo({ id, userId, prompt, aspect, duration, i
   return { resultUrl, model };
 }
 
-async function createLocalPhotoVideo({ id, userId, aspect, duration, inputDataUrl }) {
-  const inline = dataUrlToInline(inputDataUrl);
-  if (!inline?.mimeType?.startsWith("image/")) throw new Error("FFmpeg Local precisa de uma imagem válida.");
+function cleanText(value, max = 120) {
+  return String(value || "").replace(/[\r\n]+/g, " ").replace(/\s+/g, " ").trim().slice(0, max);
+}
 
-  const seconds = Math.max(4, Math.min(10, Number(duration) || 5));
+function escapeDrawtext(value) {
+  return cleanText(value, 100)
+    .replace(/\\/g, "\\\\")
+    .replace(/:/g, "\\:")
+    .replace(/'/g, "\\'")
+    .replace(/%/g, "\\%");
+}
+
+function buildFreeScript({ prompt, productName, price, cta, style }) {
+  if (cleanText(prompt, 380)) return cleanText(prompt, 380);
+  const name = cleanText(productName, 90) || "este produto";
+  const priceText = cleanText(price, 30);
+  const action = cleanText(cta, 80) || "Confira agora";
+  const hooks = {
+    oferta: "Olha essa oferta que vale a pena conhecer.",
+    country: "Para quem gosta de estilo e praticidade no dia a dia.",
+    ugc: "Eu encontrei uma opção que chamou minha atenção.",
+    clean: "Destaque para uma escolha simples, bonita e funcional."
+  };
+  const hook = hooks[cleanText(style, 20)] || hooks.oferta;
+  return `${hook} ${name}${priceText ? ` por ${priceText}` : ""}. Veja os detalhes e aproveite. ${action}.`;
+}
+
+async function createLocalPhotoVideo({ id, userId, aspect, duration, inputDataUrl, prompt, productName, price, cta, style, voice }) {
+  const inline = dataUrlToInline(inputDataUrl);
+  if (!inline?.mimeType?.startsWith("image/")) throw new Error("O NewViral Free precisa de uma imagem válida.");
+
+  const seconds = Math.max(4, Math.min(12, Number(duration) || 8));
   const dims = aspect === "16:9" ? [1280, 720] : aspect === "1:1" ? [720, 720] : [720, 1280];
   const [w, h] = dims;
   const frames = seconds * 30;
   const token = randomUUID();
   const inputExt = inline.mimeType === "image/png" ? "png" : inline.mimeType === "image/webp" ? "webp" : "jpg";
-  const inputPath = join(tmpdir(), `viralup-${token}.${inputExt}`);
-  const outputPath = join(tmpdir(), `viralup-${token}.mp4`);
+  const inputPath = join(tmpdir(), `newviral-${token}.${inputExt}`);
+  const audioPath = join(tmpdir(), `newviral-${token}.wav`);
+  const outputPath = join(tmpdir(), `newviral-free-${id}.mp4`);
+  const narration = buildFreeScript({ prompt, productName, price, cta, style });
+  let keepOutput = false;
 
   try {
     await writeFile(inputPath, Buffer.from(inline.data, "base64"));
-    const filter = `scale=${w}:${h}:force_original_aspect_ratio=increase,crop=${w}:${h},zoompan=z='min(zoom+0.0008,1.08)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=${frames}:s=${w}x${h}:fps=30,format=yuv420p`;
+
+    const voiceMap = {
+      "pt-br-f": "pt-br+f3",
+      "pt-br-m": "pt-br+m3",
+      "pt": "pt"
+    };
+    const selectedVoice = voiceMap[cleanText(voice, 20)] || "pt-br+f3";
+    await execFileAsync("espeak-ng", ["-v", selectedVoice, "-s", "155", "-p", "48", "-w", audioPath, narration], { maxBuffer: 2 * 1024 * 1024 });
+
+    const headline = escapeDrawtext(productName || "Oferta em destaque");
+    const priceLine = escapeDrawtext(price || "");
+    const ctaLine = escapeDrawtext(cta || "Confira agora");
+    const font = "/usr/share/fonts/TTF/DejaVuSans-Bold.ttf";
+    const base = `scale=${w}:${h}:force_original_aspect_ratio=decrease,pad=${w}:${h}:(ow-iw)/2:(oh-ih)/2:color=0x101114,zoompan=z='min(zoom+0.0006,1.06)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=${frames}:s=${w}x${h}:fps=30`;
+    const overlay = [
+      `drawbox=x=0:y=h*0.72:w=w:h=h*0.28:color=black@0.58:t=fill`,
+      `drawtext=fontfile=${font}:text='${headline}':fontcolor=white:fontsize=${Math.max(28, Math.round(w * 0.045))}:x=(w-text_w)/2:y=h*0.76`,
+      priceLine ? `drawtext=fontfile=${font}:text='${priceLine}':fontcolor=white:fontsize=${Math.max(26, Math.round(w * 0.04))}:x=(w-text_w)/2:y=h*0.82` : null,
+      `drawtext=fontfile=${font}:text='${ctaLine}':fontcolor=white:fontsize=${Math.max(22, Math.round(w * 0.032))}:x=(w-text_w)/2:y=h*0.89`,
+      "format=yuv420p"
+    ].filter(Boolean).join(",");
+    const filter = `${base},${overlay}`;
+
     await execFileAsync("ffmpeg", [
       "-y", "-loop", "1", "-i", inputPath,
+      "-i", audioPath,
       "-t", String(seconds),
       "-vf", filter,
+      "-af", "apad",
+      "-map", "0:v:0", "-map", "1:a:0",
       "-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
+      "-c:a", "aac", "-b:a", "128k",
       "-pix_fmt", "yuv420p", "-movflags", "+faststart",
       outputPath,
-    ], { maxBuffer: 8 * 1024 * 1024 });
+    ], { maxBuffer: 12 * 1024 * 1024 });
 
     const bytes = await readFile(outputPath);
-    const resultUrl = await uploadBufferToStorage(`${userId}/local-${id}.mp4`, bytes, "video/mp4");
-    if (!resultUrl) throw new Error("Supabase Storage indisponível para salvar o vídeo local.");
-    return { resultUrl };
+    const storedUrl = await uploadBufferToStorage(`${userId || "guest"}/local-${id}.mp4`, bytes, "video/mp4");
+    if (storedUrl) return { resultUrl: storedUrl, script: narration };
+
+    keepOutput = true;
+    return { resultUrl: `/api/studio/free-media?id=${encodeURIComponent(id)}`, script: narration };
   } finally {
-    await Promise.allSettled([rm(inputPath, { force: true }), rm(outputPath, { force: true })]);
+    await Promise.allSettled([
+      rm(inputPath, { force: true }),
+      rm(audioPath, { force: true }),
+      ...(keepOutput ? [] : [rm(outputPath, { force: true })]),
+    ]);
   }
 }
 
