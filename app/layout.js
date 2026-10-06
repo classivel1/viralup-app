@@ -1,14 +1,14 @@
 import "./globals.css";
 
 export const metadata = {
-  title: "ViralUp",
+  title: "NewViral",
   description: "Estúdio móvel para automação de vídeos verticais autorizados",
-  applicationName: "ViralUp",
+  applicationName: "NewViral",
   manifest: "/manifest.webmanifest",
   appleWebApp: {
     capable: true,
     statusBarStyle: "black-translucent",
-    title: "ViralUp"
+    title: "NewViral"
   },
   icons: {
     icon: "/icon.svg",
