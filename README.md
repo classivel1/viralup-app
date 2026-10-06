@@ -1,4 +1,4 @@
-# ViralUp Studio
+# NewViral Studio
 
 Studio mobile-first de criação de conteúdo com IA, com o pipeline anterior preservado em `/pipeline`.
 
@@ -53,3 +53,8 @@ O diretório `android/` contém um shell nativo com WebView. O workflow `.github
 - créditos descontados via função SQL atômica
 - webhook de pagamento confere o pagamento diretamente no Mercado Pago
 - RLS habilitado nas tabelas do Supabase
+
+
+## Modo Free sem API
+
+O NewViral Free gera anúncios de produto a partir de uma foto usando FFmpeg + voz local no servidor. Não exige chave de API, login, Supabase ou créditos externos. Os vídeos sem storage configurado ficam temporariamente no servidor para visualização e download.
