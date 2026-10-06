@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { readFile, rm, writeFile } from "node:fs/promises";
+import { access, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -98,12 +98,16 @@ export async function POST(request) {
     if (debited && user) await addCredits(user.id, cost).catch(() => {});
     const rawMessage = String(error?.message || error || "Falha ao iniciar geração.");
     const status = Number(error?.status || error?.statusCode || error?.response?.status || 0);
+    const diagnostic = String(error?.stderr || rawMessage).slice(-1800);
     console.error("[studio/generate]", {
       provider,
       status: status || undefined,
-      message: rawMessage,
+      message: diagnostic,
       code: error?.code || undefined,
     });
+    if (provider === "ffmpeg") {
+      return jsonError("Não foi possível finalizar o vídeo gratuito desta vez. Tente novamente; o NewViral vai usar a renderização de segurança automaticamente.", 500, { provider: "ffmpeg" });
+    }
     if (provider === "pollinations" && /credit|pollen|balance|quota|budget/i.test(rawMessage)) {
       return jsonError("A Pollinations ficou sem Pollen/créditos disponíveis. Use FFmpeg Local para continuar sem custo externo.", 402, { provider: "pollinations" });
     }
@@ -189,12 +193,14 @@ function cleanText(value, max = 120) {
   return String(value || "").replace(/[\r\n]+/g, " ").replace(/\s+/g, " ").trim().slice(0, max);
 }
 
-function escapeDrawtext(value) {
-  return cleanText(value, 100)
-    .replace(/\\/g, "\\\\")
-    .replace(/:/g, "\\:")
-    .replace(/'/g, "\\'")
-    .replace(/%/g, "\\%");
+async function firstExistingPath(paths) {
+  for (const path of paths) {
+    try {
+      await access(path);
+      return path;
+    } catch {}
+  }
+  return null;
 }
 
 function buildFreeScript({ prompt, productName, price, cta, style }) {
@@ -224,12 +230,24 @@ async function createLocalPhotoVideo({ id, userId, aspect, duration, inputDataUr
   const inputExt = inline.mimeType === "image/png" ? "png" : inline.mimeType === "image/webp" ? "webp" : "jpg";
   const inputPath = join(tmpdir(), `newviral-${token}.${inputExt}`);
   const audioPath = join(tmpdir(), `newviral-${token}.wav`);
+  const titlePath = join(tmpdir(), `newviral-${token}-title.txt`);
+  const pricePath = join(tmpdir(), `newviral-${token}-price.txt`);
+  const ctaPath = join(tmpdir(), `newviral-${token}-cta.txt`);
   const outputPath = join(tmpdir(), `newviral-free-${id}.mp4`);
   const narration = buildFreeScript({ prompt, productName, price, cta, style });
+  const title = cleanText(productName || "Oferta em destaque", 90);
+  const priceText = cleanText(price || "", 30);
+  const ctaText = cleanText(cta || "Confira agora", 80);
   let keepOutput = false;
+  let hasAudio = true;
 
   try {
-    await writeFile(inputPath, Buffer.from(inline.data, "base64"));
+    await Promise.all([
+      writeFile(inputPath, Buffer.from(inline.data, "base64")),
+      writeFile(titlePath, title, "utf8"),
+      writeFile(pricePath, priceText, "utf8"),
+      writeFile(ctaPath, ctaText, "utf8"),
+    ]);
 
     const voiceMap = {
       "pt-br-f": "pt-br+f3",
@@ -237,36 +255,69 @@ async function createLocalPhotoVideo({ id, userId, aspect, duration, inputDataUr
       "pt": "pt"
     };
     const selectedVoice = voiceMap[cleanText(voice, 20)] || "pt-br+f3";
-    await execFileAsync("espeak-ng", ["-v", selectedVoice, "-s", "155", "-p", "48", "-w", audioPath, narration], { maxBuffer: 2 * 1024 * 1024 });
+    try {
+      await execFileAsync("espeak-ng", ["-v", selectedVoice, "-s", "155", "-p", "48", "-w", audioPath, narration], { maxBuffer: 2 * 1024 * 1024 });
+    } catch (ttsError) {
+      hasAudio = false;
+      console.warn("[studio/free] narração local indisponível; gerando vídeo sem áudio", String(ttsError?.message || ttsError).slice(0, 280));
+    }
 
-    const headline = escapeDrawtext(productName || "Oferta em destaque");
-    const priceLine = escapeDrawtext(price || "");
-    const ctaLine = escapeDrawtext(cta || "Confira agora");
-    const font = "/usr/share/fonts/TTF/DejaVuSans-Bold.ttf";
+    const font = await firstExistingPath([
+      "/usr/share/fonts/TTF/DejaVuSans-Bold.ttf",
+      "/usr/share/fonts/dejavu/DejaVuSans-Bold.ttf",
+      "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+    ]);
+
+    const boxY = Math.round(h * 0.72);
+    const boxH = h - boxY;
+    const titleY = Math.round(h * 0.76);
+    const priceY = Math.round(h * 0.82);
+    const ctaY = Math.round(h * 0.89);
+    const titleSize = Math.max(28, Math.round(w * 0.045));
+    const priceSize = Math.max(26, Math.round(w * 0.04));
+    const ctaSize = Math.max(22, Math.round(w * 0.032));
+
     const base = `scale=${w}:${h}:force_original_aspect_ratio=decrease,pad=${w}:${h}:(ow-iw)/2:(oh-ih)/2:color=0x101114,zoompan=z='min(zoom+0.0006,1.06)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=${frames}:s=${w}x${h}:fps=30`;
-    const overlay = [
-      `drawbox=x=0:y=h*0.72:w=w:h=h*0.28:color=black@0.58:t=fill`,
-      `drawtext=fontfile=${font}:text='${headline}':fontcolor=white:fontsize=${Math.max(28, Math.round(w * 0.045))}:x=(w-text_w)/2:y=h*0.76`,
-      priceLine ? `drawtext=fontfile=${font}:text='${priceLine}':fontcolor=white:fontsize=${Math.max(26, Math.round(w * 0.04))}:x=(w-text_w)/2:y=h*0.82` : null,
-      `drawtext=fontfile=${font}:text='${ctaLine}':fontcolor=white:fontsize=${Math.max(22, Math.round(w * 0.032))}:x=(w-text_w)/2:y=h*0.89`,
+    const overlay = font ? [
+      `drawbox=x=0:y=${boxY}:w=${w}:h=${boxH}:color=black@0.58:t=fill`,
+      `drawtext=fontfile=${font}:textfile=${titlePath}:fontcolor=white:fontsize=${titleSize}:x=(w-text_w)/2:y=${titleY}`,
+      priceText ? `drawtext=fontfile=${font}:textfile=${pricePath}:fontcolor=white:fontsize=${priceSize}:x=(w-text_w)/2:y=${priceY}` : null,
+      `drawtext=fontfile=${font}:textfile=${ctaPath}:fontcolor=white:fontsize=${ctaSize}:x=(w-text_w)/2:y=${ctaY}`,
       "format=yuv420p"
-    ].filter(Boolean).join(",");
-    const filter = `${base},${overlay}`;
+    ].filter(Boolean).join(",") : "format=yuv420p";
 
-    await execFileAsync("ffmpeg", [
-      "-y", "-loop", "1", "-i", inputPath,
-      "-i", audioPath,
-      "-t", String(seconds),
-      "-vf", filter,
-      "-af", "apad",
-      "-map", "0:v:0", "-map", "1:a:0",
-      "-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
-      "-c:a", "aac", "-b:a", "128k",
-      "-pix_fmt", "yuv420p", "-movflags", "+faststart",
-      outputPath,
-    ], { maxBuffer: 12 * 1024 * 1024 });
+    const fullFilter = `${base},${overlay}`;
+    const simpleFilter = `scale=${w}:${h}:force_original_aspect_ratio=decrease,pad=${w}:${h}:(ow-iw)/2:(oh-ih)/2:color=0x101114,fps=30,format=yuv420p`;
+
+    const render = async (filter) => {
+      const args = ["-y", "-loop", "1", "-i", inputPath];
+      if (hasAudio) args.push("-i", audioPath);
+      args.push("-t", String(seconds), "-vf", filter);
+      if (hasAudio) {
+        args.push("-af", "apad", "-map", "0:v:0", "-map", "1:a:0");
+      } else {
+        args.push("-map", "0:v:0");
+      }
+      args.push(
+        "-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
+        ...(hasAudio ? ["-c:a", "aac", "-b:a", "128k"] : []),
+        "-pix_fmt", "yuv420p", "-movflags", "+faststart",
+        outputPath
+      );
+      return execFileAsync("ffmpeg", args, { maxBuffer: 12 * 1024 * 1024 });
+    };
+
+    try {
+      await render(fullFilter);
+    } catch (overlayError) {
+      const detail = String(overlayError?.stderr || overlayError?.message || overlayError).slice(-900);
+      console.warn("[studio/free] overlay avançado falhou; usando renderização básica", detail);
+      await render(simpleFilter);
+    }
 
     const bytes = await readFile(outputPath);
+    if (!bytes.length) throw new Error("O render local terminou sem gerar um arquivo de vídeo.");
+
     const storedUrl = await uploadBufferToStorage(`${userId || "guest"}/local-${id}.mp4`, bytes, "video/mp4");
     if (storedUrl) return { resultUrl: storedUrl, script: narration };
 
@@ -276,6 +327,9 @@ async function createLocalPhotoVideo({ id, userId, aspect, duration, inputDataUr
     await Promise.allSettled([
       rm(inputPath, { force: true }),
       rm(audioPath, { force: true }),
+      rm(titlePath, { force: true }),
+      rm(pricePath, { force: true }),
+      rm(ctaPath, { force: true }),
       ...(keepOutput ? [] : [rm(outputPath, { force: true })]),
     ]);
   }
