@@ -13,6 +13,7 @@ const PROJECTS_KEY = "viralup_studio_projects";
 const DEMO_CREDITS_KEY = "viralup_studio_demo_credits";
 
 const TOOLS = [
+  { id: "free-ad", title: "NewViral Free", desc: "Foto → anúncio 9:16 com voz e CTA, sem API e sem créditos.", icon: Zap, tag: "GRÁTIS", kind: "video", accepts: "image/*", cost: 0 },
   { id: "product-video", title: "Foto → Vídeo", desc: "Anime fotos de produtos em anúncios verticais.", icon: Sparkles, tag: "MAIS USADO", kind: "video", accepts: "image/*", cost: 12 },
   { id: "ai-video", title: "Gerador de Vídeo", desc: "Texto ou imagem para vídeo com IA.", icon: Video, tag: "IA", kind: "video", accepts: "image/*,video/*", cost: 18 },
   { id: "ugc", title: "Vídeo UGC", desc: "Roteiros de review, demonstração e unboxing.", icon: UserRound, tag: "VENDA", kind: "video", accepts: "image/*,video/*", cost: 18 },
@@ -161,7 +162,7 @@ export default function StudioPage() {
         <div className={styles.brandWrap}>
           <div className={styles.logo}>V</div>
           <div>
-            <strong>ViralUp Studio</strong>
+            <strong>NewViral Studio</strong>
             <span>AI Creative Suite</span>
           </div>
         </div>
@@ -208,9 +209,9 @@ function HomeView({ setTab, setTool, providerCount, config }) {
   return <>
     <section className={styles.hero}>
       <div className={styles.heroCopy}>
-        <span className={styles.kicker}><Sparkles size={14}/> NOVO STUDIO IA</span>
+        <span className={styles.kicker}><Sparkles size={14}/> MODO FREE · SEM API</span>
         <h1>Transforme produtos em conteúdo que vende.</h1>
-        <p>Crie vídeos verticais, UGC, capas e anúncios com IA em um único painel otimizado para celular.</p>
+        <p>Comece grátis: envie uma foto e gere vídeo vertical com movimento, voz local e CTA sem chave de API.</p>
         <div className={styles.heroButtons}>
           <button className={styles.primary} onClick={() => setTool(TOOLS[0])}><Play size={18}/> Criar vídeo</button>
           <button className={styles.secondary} onClick={() => setTab("create")}><Wand2 size={18}/> Ver ferramentas</button>
@@ -233,7 +234,7 @@ function HomeView({ setTab, setTool, providerCount, config }) {
 
     <section className={styles.pipelineBanner}>
       <div className={styles.pipelineIcon}><PackageOpen size={28}/></div>
-      <div><span>SEU FLUXO ANTERIOR FOI PRESERVADO</span><h3>Pipeline ViralUp de episódios e pacotes</h3><p>Continue usando o sistema de edição, capas, ZIP e publicação que já existia.</p></div>
+      <div><span>SEU FLUXO ANTERIOR FOI PRESERVADO</span><h3>Pipeline NewViral de episódios e pacotes</h3><p>Continue usando o sistema de edição, capas, ZIP e publicação que já existia.</p></div>
       <a href="/pipeline">Abrir pipeline <ChevronRight size={17}/></a>
     </section>
   </>;
@@ -257,7 +258,7 @@ function ToolCard({ tool, onClick }) {
     {tool.tag && <span className={styles.toolTag}>{tool.tag}</span>}
     <span className={styles.toolIcon}><Icon size={22}/></span>
     <strong>{tool.title}</strong><p>{tool.desc}</p>
-    <span className={styles.toolFooter}>{tool.cost} créditos <ChevronRight size={15}/></span>
+    <span className={styles.toolFooter}>{tool.cost === 0 ? "Grátis · sem API" : `${tool.cost} créditos`} <ChevronRight size={15}/></span>
   </button>;
 }
 
@@ -307,8 +308,9 @@ function CreditsView({ credits, session, billing, onCheckout, onDemoAdd }) {
 
 function SettingsView({ config, session }) {
   const providers = [
+    ["free", "NewViral Free", "Foto → vídeo + voz local · sem API"],
     ["pollinations", "Pollinations", "Vídeo IA · usa Pollen disponível"],
-    ["ffmpeg", "FFmpeg Local", "Fallback grátis · sem API externa"],
+    ["ffmpeg", "FFmpeg Local", "Motor interno do modo grátis"],
     ["gemini", "Google Veo 3.1", "Vídeo premium"],
     ["runway", "Runway Gen-4.5", "Vídeo premium alternativo"],
     ["fal", "Kling 2.6 / fal.ai", "Vídeo de reserva"],
@@ -327,18 +329,24 @@ function SettingsView({ config, session }) {
       return <div className={styles.providerRow} key={key}><span className={`${styles.providerDot} ${ok ? styles.providerOn : ""}`}/><div><b>{name}</b><small>{desc}</small></div><em>{ok ? "Conectado" : "Pendente"}</em></div>;
     })}</div></div>
     <div className={styles.settingCard}><strong>Conta</strong><p>{session?.user?.email || "Você está usando o modo local. Entre para sincronizar saldo e projetos no banco."}</p></div>
-    <a className={styles.legacyLink} href="/pipeline"><PackageOpen size={18}/> Abrir pipeline ViralUp anterior <ChevronRight size={17}/></a>
+    <a className={styles.legacyLink} href="/pipeline"><PackageOpen size={18}/> Abrir pipeline NewViral anterior <ChevronRight size={17}/></a>
   </>;
 }
 
 function PageHead({ title, text }) { return <div className={styles.pageHead}><h1>{title}</h1><p>{text}</p></div>; }
 
 function ToolModal({ tool, config, session, credits, onClose, onNeedAuth, onCreated }) {
+  const isFreeTool = tool.id === "free-ad";
   const [prompt, setPrompt] = useState("");
+  const [productName, setProductName] = useState("");
+  const [price, setPrice] = useState("");
+  const [cta, setCta] = useState("Confira agora");
+  const [style, setStyle] = useState("oferta");
+  const [voice, setVoice] = useState("pt-br-f");
   const [aspect, setAspect] = useState("9:16");
   const [quality, setQuality] = useState("720p");
   const [duration, setDuration] = useState("8");
-  const [provider, setProvider] = useState("auto");
+  const [provider, setProvider] = useState(isFreeTool ? "ffmpeg" : "auto");
   const [file, setFile] = useState(null);
   const [preview, setPreview] = useState("");
   const [busy, setBusy] = useState(false);
@@ -361,16 +369,17 @@ function ToolModal({ tool, config, session, credits, onClose, onNeedAuth, onCrea
   }
 
   const videoTool = tool.kind === "video";
-  const realPossible = videoTool ? (config.providers?.pollinations || config.providers?.ffmpeg || config.providers?.gemini || config.providers?.runway || config.providers?.fal) : config.providers?.openai;
-  const freeVideoSelected = videoTool && (
+  const realPossible = isFreeTool || (videoTool ? (config.providers?.pollinations || config.providers?.ffmpeg || config.providers?.gemini || config.providers?.runway || config.providers?.fal) : config.providers?.openai);
+  const freeVideoSelected = isFreeTool || (videoTool && (
     provider === "pollinations" ||
     provider === "ffmpeg" ||
     (provider === "auto" && (config.providers?.pollinations || (config.providers?.ffmpeg && file)))
-  );
+  ));
   const generationCost = freeVideoSelected ? 0 : tool.cost;
 
   async function generate() {
     if (credits < generationCost) return alert("Créditos insuficientes.");
+    if (isFreeTool && !file) return alert("Adicione uma foto do produto para usar o NewViral Free.");
     if (!prompt.trim() && ["product-video","ai-video","ugc","avatar","thumbnail"].includes(tool.id)) return alert("Escreva uma instrução para a IA.");
     setBusy(true);
     setLoadingProgress(4);
@@ -384,8 +393,8 @@ function ToolModal({ tool, config, session, credits, onClose, onNeedAuth, onCrea
         inputDataUrl = await readAsDataUrl(file);
       }
       setLoadingProgress(22);
-      const selectedProvider = provider === "auto"
-        ? (config.providers?.pollinations ? "Pollinations" : config.providers?.ffmpeg && file ? "FFmpeg Local" : config.providers?.runway ? "Runway" : config.providers?.gemini ? "Veo" : config.providers?.fal ? "Kling" : "modelo")
+      const selectedProvider = isFreeTool ? "NewViral Free" : provider === "auto"
+        ? (config.providers?.ffmpeg && file ? "NewViral Free" : config.providers?.pollinations ? "Pollinations" : config.providers?.runway ? "Runway" : config.providers?.gemini ? "Veo" : config.providers?.fal ? "Kling" : "modelo")
         : provider === "pollinations" ? "Pollinations"
         : provider === "ffmpeg" ? "FFmpeg Local"
         : provider === "runway" ? "Runway"
@@ -404,7 +413,7 @@ function ToolModal({ tool, config, session, credits, onClose, onNeedAuth, onCrea
       const r = await fetch("/api/studio/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json", ...tokenHeaders(session) },
-        body: JSON.stringify({ tool: tool.id, prompt, aspect, quality, duration, provider, inputDataUrl, inputMime: file?.type || null, kind: tool.kind })
+        body: JSON.stringify({ tool: tool.id, prompt, aspect, quality, duration, provider: isFreeTool ? "ffmpeg" : provider, inputDataUrl, inputMime: file?.type || null, kind: tool.kind, productName, price, cta, style, voice })
       });
       const data = await r.json();
       if (progressTimer.current) { clearInterval(progressTimer.current); progressTimer.current = null; }
@@ -442,15 +451,22 @@ function ToolModal({ tool, config, session, credits, onClose, onNeedAuth, onCrea
           {preview ? (file?.type.startsWith("video/") ? <video src={preview} muted playsInline/> : <img src={preview} alt="prévia"/>) : <><Upload size={30}/><strong>Adicionar mídia</strong><span>{tool.accepts?.includes("image") ? "Foto ou arquivo compatível" : "Vídeo ou áudio"}</span></>}
         </button>
         <input ref={fileRef} hidden type="file" accept={tool.accepts} onChange={e => chooseFile(e.target.files?.[0])}/>
-        <label>Instrução para a IA</label>
-        <textarea value={prompt} onChange={e => setPrompt(e.target.value)} placeholder="Ex.: mantenha o produto fiel à foto, movimentos naturais de câmera, iluminação de loja premium, foco nos detalhes, anúncio vertical para Reels..."/>
+        {isFreeTool && <div className={styles.formGrid}>
+          <div><label>Produto</label><input value={productName} onChange={e => setProductName(e.target.value)} placeholder="Ex.: Camisa country"/></div>
+          <div><label>Preço (opcional)</label><input value={price} onChange={e => setPrice(e.target.value)} placeholder="Ex.: R$ 79,90"/></div>
+          <div><label>Estilo</label><select value={style} onChange={e => setStyle(e.target.value)}><option value="oferta">Oferta direta</option><option value="country">Country</option><option value="ugc">UGC simples</option><option value="clean">Clean</option></select></div>
+          <div><label>Voz</label><select value={voice} onChange={e => setVoice(e.target.value)}><option value="pt-br-f">Feminina PT-BR</option><option value="pt-br-m">Masculina PT-BR</option><option value="pt">Português neutro</option></select></div>
+        </div>}
+        {isFreeTool && <><label>CTA</label><input value={cta} onChange={e => setCta(e.target.value)} placeholder="Ex.: Acesse o link na bio"/></>}
+        <label>{isFreeTool ? "Narração (opcional)" : "Instrução para a IA"}</label>
+        <textarea value={prompt} onChange={e => setPrompt(e.target.value)} placeholder={isFreeTool ? "Deixe em branco para o NewViral montar uma narração automática, ou escreva aqui exatamente o que a voz deve falar." : "Ex.: mantenha o produto fiel à foto, movimentos naturais de câmera, iluminação de loja premium, foco nos detalhes, anúncio vertical para Reels..."}/>
         <div className={styles.formGrid}>
           <div><label>Formato</label><select value={aspect} onChange={e => setAspect(e.target.value)}><option>9:16</option><option>16:9</option><option>1:1</option></select></div>
-          <div><label>Duração</label><select value={duration} onChange={e => setDuration(e.target.value)}><option value="4">4 s</option><option value="5">5 s</option><option value="8">8 s</option><option value="10">10 s</option></select></div>
+          <div><label>Duração</label><select value={duration} onChange={e => setDuration(e.target.value)}><option value="4">4 s</option><option value="5">5 s</option><option value="8">8 s</option><option value="10">10 s</option><option value="12">12 s</option></select></div>
           <div><label>Qualidade</label><select value={quality} onChange={e => setQuality(e.target.value)}><option value="720p">720p</option><option value="1080p">1080p</option><option value="4k">4K</option></select></div>
-          <div><label>Modelo</label><select value={provider} onChange={e => setProvider(e.target.value)}><option value="auto">{config.providers?.pollinations ? "Automático (Pollinations primeiro)" : config.providers?.ffmpeg ? "Automático (grátis primeiro)" : "Automático"}</option><option value="pollinations">Pollinations</option><option value="ffmpeg">FFmpeg Local · grátis</option><option value="runway">Runway Gen-4.5</option><option value="veo">Veo 3.1</option><option value="kling">Kling 2.6</option>{tool.kind === "image" && <option value="openai">GPT Image 2.5</option>}</select></div>
+          {!isFreeTool && <div><label>Modelo</label><select value={provider} onChange={e => setProvider(e.target.value)}><option value="auto">{config.providers?.ffmpeg ? "Automático (grátis primeiro)" : config.providers?.pollinations ? "Automático (Pollinations primeiro)" : "Automático"}</option><option value="ffmpeg">NewViral Free · sem API</option><option value="pollinations">Pollinations</option><option value="runway">Runway Gen-4.5</option><option value="veo">Veo 3.1</option><option value="kling">Kling 2.6</option>{tool.kind === "image" && <option value="openai">GPT Image 2.5</option>}</select></div>}
         </div>
-        <div className={styles.modalNotice}><span className={`${styles.statusDot} ${realPossible ? styles.green : ""}`}/><div><b>{realPossible ? "Há provedor real configurado" : "Modo demonstração ativo"}</b><small>{realPossible ? "A solicitação será enviada pelo servidor sem expor a chave." : "O fluxo será simulado até configurar uma API."}</small></div></div>
+        <div className={styles.modalNotice}><span className={`${styles.statusDot} ${realPossible ? styles.green : ""}`}/><div><b>{isFreeTool ? "Modo Free pronto" : realPossible ? "Há provedor real configurado" : "Modo demonstração ativo"}</b><small>{isFreeTool ? "Sem API, sem login obrigatório e sem consumo de créditos. O vídeo é processado localmente no servidor." : realPossible ? "A solicitação será enviada pelo servidor sem expor a chave." : "O fluxo será simulado até configurar uma API."}</small></div></div>
         {busy && <div className={styles.generationLoader}>
           <div className={styles.loaderTop}>
             <div className={styles.loaderIdentity}><span className={styles.spinner}/><div><strong>{loadingStage || "Preparando"}</strong><small>Não feche esta tela enquanto a tarefa é enviada.</small></div></div>
